@@ -670,7 +670,7 @@ impl EvaluateContext for WebpackLoaderContext {
                     request_vc,
                     EcmaScriptModulesReferenceSubType::ImportModule,
                     ResolveErrorMode::Error,
-                    None,
+                    Some(IssueSource::from_source_only(self.context_source_for_issue)),
                 )
                 .await?;
 
