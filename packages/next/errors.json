@@ -1117,5 +1117,16 @@
   "1116": "Route \"%s\" accessed header \"%s\" which is not defined in the \\`samples\\` of \\`unstable_instant\\`. Add it to the sample's \\`headers\\` array, or \\`[\"%s\", null]\\` if it should be absent.",
   "1117": "Instant validation boundaries should never appear in browser bundles.",
   "1118": "An error occurred while attempting to validate instant UI. This error may be preventing the validation from completing.",
-  "1119": "Expected edge function entrypoint to emit a JavaScript file"
+  "1119": "Expected edge function entrypoint to emit a JavaScript file",
+  "1120": "Worker pool is ending, no more calls can be made",
+  "1121": "Worker exited with code %s%s",
+  "1122": "This file must be run as a worker thread",
+  "1123": "Worker pool closed",
+  "1124": "Child can only be used on a forked process",
+  "1125": "Error when calling setup: %s",
+  "1126": "Worker pool ended before task could be processed",
+  "1127": "\"null\" or \"undefined\" thrown",
+  "1128": "Unexpected request from parent process: %s",
+  "1129": "Worker exited unexpectedly with code %s, signal %s",
+  "1130": "Worker restarted due to timeout"
 }
