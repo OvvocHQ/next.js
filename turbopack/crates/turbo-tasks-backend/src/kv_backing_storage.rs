@@ -1,3 +1,10 @@
+//! [`BackingStorage`] implementation backed by a [`KeyValueDatabase`].
+//!
+//! [`KeyValueDatabaseBackingStorage`] wraps any [`KeyValueDatabase`] implementation into the
+//! [`BackingStorage`] trait expected by [`TurboTasksBackend`](crate::TurboTasksBackend).
+//! It handles versioned on-disk storage, cache invalidation, panic hook registration,
+//! and serialization of task data and operations into key-value pairs.
+
 use std::{
     borrow::Borrow,
     env,
@@ -83,6 +90,10 @@ pub struct KeyValueDatabaseBackingStorageInner<T: KeyValueDatabase> {
     _panic_hook_guard: Option<PanicHookGuard>,
 }
 
+/// A [`BackingStorage`] implementation that delegates to a [`KeyValueDatabase`].
+///
+/// Handles serialization of task data, versioned on-disk directories, cache invalidation on
+/// panic, and batch snapshot writes.
 pub struct KeyValueDatabaseBackingStorage<T: KeyValueDatabase> {
     // wrapped so that `register_panic_hook` can hold a weak reference to `inner`.
     inner: Arc<KeyValueDatabaseBackingStorageInner<T>>,

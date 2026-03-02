@@ -1,3 +1,9 @@
+//! Preparation of aggregation numbers before connecting new children.
+//!
+//! [`prepare_new_children`] adjusts the parent's aggregation number based on the number of
+//! children being added, ensuring the aggregation tree remains balanced. It also enqueues
+//! aggregation number updates for children that need adjustment.
+
 use std::{cmp::max, num::NonZeroU32};
 
 use rustc_hash::FxHashSet;

@@ -1,3 +1,8 @@
+//! Batch connecting multiple children to a parent task.
+//!
+//! [`connect_children`] adds a set of new child tasks to a parent, updating the aggregation
+//! tree in bulk. For large batches, work is parallelized across worker threads.
+
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use turbo_tasks::{
