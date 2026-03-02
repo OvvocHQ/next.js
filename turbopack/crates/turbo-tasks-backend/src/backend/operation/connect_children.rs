@@ -17,6 +17,7 @@ use crate::backend::operation::{
     get_uppers, is_aggregating_node,
 };
 
+/// Connects a set of new children to a parent task, updating the aggregation tree in bulk.
 pub fn connect_children(
     ctx: &mut impl ExecuteContext<'_>,
     parent_task_id: TaskId,

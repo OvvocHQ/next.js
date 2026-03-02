@@ -78,6 +78,8 @@ fn should_invalidate_on_panic() -> bool {
     *SHOULD_INVALIDATE
 }
 
+/// Inner state for [`KeyValueDatabaseBackingStorage`], wrapped in an `Arc` so that the panic
+/// hook can hold a `Weak` reference without creating a reference cycle.
 pub struct KeyValueDatabaseBackingStorageInner<T: KeyValueDatabase> {
     database: T,
     /// Used when calling [`BackingStorage::invalidate`]. Can be `None` in the memory-only/no-op

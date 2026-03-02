@@ -2,8 +2,9 @@
 //!
 //! [`KeyValueDatabase`] defines the interface for low-level storage backends. Implementations
 //! must support read transactions, key-space-scoped reads, and write batches (serial or
-//! concurrent). The trait is used by [`KeyValueDatabaseBackingStorage`](crate::kv_backing_storage)
-//! to bridge to the [`BackingStorage`](crate::BackingStorage) trait.
+//! concurrent). The trait is used by
+//! [`KeyValueDatabaseBackingStorage`](crate::KeyValueDatabaseBackingStorage) to bridge to the
+//! [`BackingStorage`](crate::BackingStorage) trait.
 
 use anyhow::Result;
 use smallvec::SmallVec;

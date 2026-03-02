@@ -44,7 +44,7 @@ Key operations:
 | `UpdateCollectibleOperation` | Tracks emitted collectible resources |
 | `ConnectChildOperation` | Links a child task to a parent |
 | `CleanupOldEdgesOperation` | Removes stale dependency edges after re-execution |
-| `AggregationUpdateOperation` | Propagates dirty/clean state through the aggregation tree |
+| `AggregationUpdateQueue` | Propagates dirty/clean state through the aggregation tree |
 | `LeafDistanceUpdateQueue` | Recomputes scheduling priority distances |
 
 Operations run inside an `ExecuteContext` that provides task locking, storage access, and suspension-point coordination.

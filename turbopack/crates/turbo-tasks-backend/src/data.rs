@@ -109,6 +109,10 @@ impl OutputValue {
     }
 }
 
+/// Tracks whether a task's subgraph is "active" (i.e., should be kept up-to-date).
+///
+/// A task is active when any of: it is a root/once task, its `active_counter` is positive
+/// (incremented by dependents), or `active_until_clean` is set (caching activeness while dirty).
 #[derive(Debug)]
 pub struct ActivenessState {
     /// When this counter is > 0, the task is active.
