@@ -622,12 +622,8 @@ impl StaticSortedFile {
     }
 
     /// Returns `(uncompressed_length, checksum, block_data)` as an owned `ArcBytes`.
-    fn get_raw_block(&self, block_index: u16) -> Result<(u32, u32, ArcBytes)> {
-        self.get_raw_block_slice(block_index)
-    }
-
-    /// Gets the raw block data as an `ArcBytes`. For mmap-backed files, the returned
-    /// `ArcBytes` points into the mmap. For file-backed files, the data is read via pread.
+    /// For mmap-backed files, the returned `ArcBytes` points into the mmap.
+    /// For file-backed files, the data is read via pread.
     fn get_raw_block_slice(&self, block_index: u16) -> Result<(u32, u32, ArcBytes)> {
         match &self.backing {
             StaticSortedFileBacking::Mmap { mmap } => {
@@ -919,7 +915,8 @@ impl StaticSortedFileIter {
                 let value = if ty == KEY_BLOCK_ENTRY_TYPE_MEDIUM {
                     let mut val = val;
                     let block = val.read_u16::<BE>()?;
-                    let (uncompressed_size, checksum, block) = self.this.get_raw_block(block)?;
+                    let (uncompressed_size, checksum, block) =
+                        self.this.get_raw_block_slice(block)?;
                     LazyLookupValue::Medium {
                         uncompressed_size,
                         checksum,
