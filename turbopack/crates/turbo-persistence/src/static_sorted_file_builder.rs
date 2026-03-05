@@ -1357,6 +1357,7 @@ mod tests {
                 sequence_number: seq,
                 block_count: meta.block_count,
             },
+            true,
         )
     }
 
@@ -1680,6 +1681,7 @@ mod tests {
                 sequence_number: 1,
                 block_count: meta1.block_count,
             },
+            true,
         )?;
         let sst2 = StaticSortedFile::open(
             dir.path(),
@@ -1687,6 +1689,7 @@ mod tests {
                 sequence_number: 2,
                 block_count: meta2.block_count,
             },
+            true,
         )?;
         let kc = make_cache();
         let vc = make_cache();
