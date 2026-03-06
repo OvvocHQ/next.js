@@ -11,6 +11,7 @@ use turbo_tasks::{
 use turbopack_core::{
     chunk::{ChunkingContext, ChunkingType},
     issue::IssueSource,
+    module::Module,
     reference::ModuleReference,
     reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
     resolve::{
@@ -143,12 +144,21 @@ impl IntoCodeGenReference for EmitReference {
 #[value_to_string("collect {namespace}")]
 pub struct CollectReference {
     origin: ResolvedVc<Box<dyn ResolveOrigin>>,
+    parent_module: ResolvedVc<Box<dyn Module>>,
     namespace: RcStr,
 }
 
 impl CollectReference {
-    pub fn new(origin: ResolvedVc<Box<dyn ResolveOrigin>>, namespace: RcStr) -> Self {
-        CollectReference { origin, namespace }
+    pub fn new(
+        origin: ResolvedVc<Box<dyn ResolveOrigin>>,
+        parent_module: ResolvedVc<Box<dyn Module>>,
+        namespace: RcStr,
+    ) -> Self {
+        CollectReference {
+            origin,
+            parent_module,
+            namespace,
+        }
     }
 }
 
@@ -173,6 +183,7 @@ impl ModuleReference for CollectReference {
                 collect_request(),
                 with_data_uri(self.origin.resolve_options()),
                 ReferenceType::Collect {
+                    parent_module: self.parent_module,
                     namespace: self.namespace.clone(),
                 },
             )
