@@ -105,24 +105,19 @@ impl Storage {
         }
     }
 
-    /// Processes every modified item (resp. a snapshot of it) with the given functions and returns
+    /// Processes every modified item (resp. a snapshot of it) with the given function and returns
     /// the results. Ends snapshot mode afterwards.
-    /// process is called while holding a read lock on the task storage, so it can access
-    /// the TaskStorage directly without cloning.
-    /// process_snapshot is called for tasks that were accessed during snapshot mode and
-    /// receives an owned Box<TaskStorage> snapshot.
-    /// Both callbacks receive a mutable scratch buffer that can be reused across iterations
-    /// to avoid repeated allocations.
+    /// The callback receives a TaskId, a reference to the TaskStorage (either the live storage
+    /// under a read lock, or a frozen snapshot for tasks accessed during snapshot mode), and a
+    /// mutable scratch buffer that can be reused across iterations to avoid repeated allocations.
     /// The returned iterators are guaranteed to be non-empty and only yield non-empty items.
     pub fn take_snapshot<
         'l,
         P: for<'a> Fn(TaskId, &'a TaskStorage, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
-        PS: Fn(TaskId, Box<TaskStorage>, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
     >(
         &'l self,
         process: &'l P,
-        process_snapshot: &'l PS,
-    ) -> Vec<Peekable<SnapshotShard<'l, P, PS>>> {
+    ) -> Vec<Peekable<SnapshotShard<'l, P>>> {
         if !self.snapshot_mode() {
             self.start_snapshot();
         }
@@ -172,7 +167,6 @@ impl Storage {
                 storage: self,
                 guard: Some(guard.clone()),
                 process,
-                process_snapshot,
                 scratch_buffer: TurboBincodeBuffer::with_capacity(SCRATCH_BUFFER_SIZE),
             };
 
@@ -324,12 +318,13 @@ impl StorageWriteGuard<'_> {
             return;
         }
         let modified = flags.is_modified(category);
+        let snapshot = flags.any_snapshot();
         #[cfg(feature = "trace_task_modification")]
         let _span = (!modified).then(|| tracing::trace_span!("mark_modified", name).entered());
         match (self.storage.snapshot_mode(), modified) {
             (false, false) => {
                 // Not in snapshot mode and item is unmodified
-                if !flags.any_snapshot() && !flags.any_modified() {
+                if !snapshot && !flags.any_modified() {
                     self.storage
                         .modified
                         .insert(*self.inner.key(), ModifiedState::Modified);
@@ -342,7 +337,8 @@ impl StorageWriteGuard<'_> {
             }
             (true, false) => {
                 // In snapshot mode and item is unmodified (so it's not part of the snapshot)
-                if !flags.any_snapshot() {
+                // Mark it so it gets re-added as Modified after this snapshot completes
+                if !snapshot {
                     self.storage
                         .modified
                         .insert(*self.inner.key(), ModifiedState::Snapshot(None));
@@ -352,7 +348,7 @@ impl StorageWriteGuard<'_> {
             (true, true) => {
                 // In snapshot mode and item is modified (so it's part of the snapshot)
                 // We need to store the original version that is part of the snapshot
-                if !flags.any_snapshot() {
+                if !snapshot {
                     // Snapshot all non-transient fields but keep the modified bits.
                     let mut snapshot = self.inner.clone_snapshot();
                     snapshot.flags.set_data_modified(flags.data_modified());
@@ -392,29 +388,23 @@ impl Drop for SnapshotGuard<'_> {
     }
 }
 
-pub struct SnapshotShard<'l, P, PS> {
+pub struct SnapshotShard<'l, P> {
     direct_snapshots: Vec<(TaskId, Box<TaskStorage>)>,
     modified: SmallVec<[TaskId; 4]>,
     storage: &'l Storage,
     guard: Option<Arc<SnapshotGuard<'l>>>,
     process: &'l P,
-    process_snapshot: &'l PS,
     /// Scratch buffer for encoding task data, reused across iterations to avoid allocations
     scratch_buffer: TurboBincodeBuffer,
 }
 
-impl<'l, P, PS> SnapshotShard<'l, P, PS>
+impl<'l, P> SnapshotShard<'l, P>
 where
     P: Fn(TaskId, &TaskStorage, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
-    PS: Fn(TaskId, Box<TaskStorage>, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
 {
     fn next_item(&mut self) -> Option<SnapshotItem> {
         if let Some((task_id, snapshot)) = self.direct_snapshots.pop() {
-            return Some((self.process_snapshot)(
-                task_id,
-                snapshot,
-                &mut self.scratch_buffer,
-            ));
+            return Some((self.process)(task_id, &snapshot, &mut self.scratch_buffer));
         }
         while let Some(task_id) = self.modified.pop() {
             let inner = self.storage.map.get(&task_id).unwrap();
@@ -430,11 +420,7 @@ where
                     snapshot.take()
                 };
                 if let Some(snapshot) = maybe_snapshot {
-                    return Some((self.process_snapshot)(
-                        task_id,
-                        snapshot,
-                        &mut self.scratch_buffer,
-                    ));
+                    return Some((self.process)(task_id, &snapshot, &mut self.scratch_buffer));
                 }
             }
         }
@@ -442,10 +428,9 @@ where
     }
 }
 
-impl<'l, P, PS> Iterator for SnapshotShard<'l, P, PS>
+impl<'l, P> Iterator for SnapshotShard<'l, P>
 where
     P: Fn(TaskId, &TaskStorage, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
-    PS: Fn(TaskId, Box<TaskStorage>, &mut TurboBincodeBuffer) -> SnapshotItem + Sync,
 {
     type Item = SnapshotItem;
 
