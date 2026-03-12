@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 
 use crate::{
     AccessMode, QueryKey,
-    arc_bytes::ArcBytes,
+    arc_bytes::{ArcBytes, ArcBytesInner},
     compression::{checksum_block, decompress_into_arc},
     constants::MAX_INLINE_VALUE_SIZE,
     lookup_entry::{LazyLookupValue, LookupEntry, LookupValue},
@@ -612,9 +612,9 @@ impl StaticSortedFile {
         // Verify checksum on the raw on-disk data before decompression.
         self.verify_checksum(&block, expected_checksum, block_index)?;
 
-        // 0 means the block was not compressed, return the ArcBytes directly
+        // 0 means the block was not compressed, promote to owned ArcBytes
         if uncompressed_length == 0 {
-            return Ok(block);
+            return Ok(block.into_static());
         }
 
         let buffer = decompress_into_arc(uncompressed_length, &block).with_context(|| {
@@ -626,10 +626,10 @@ impl StaticSortedFile {
         Ok(ArcBytes::from(buffer))
     }
 
-    /// Returns `(uncompressed_length, checksum, block_data)` as an owned `ArcBytes`.
-    /// For mmap-backed files, the returned `ArcBytes` points into the mmap.
-    /// For file-backed files, the data is read via pread.
-    fn get_raw_block_slice(&self, block_index: u16) -> Result<(u32, u32, ArcBytes)> {
+    /// Returns `(uncompressed_length, checksum, block_data)`.
+    /// For mmap-backed files, the returned `ArcBytesInner` borrows the mmap (no Arc clone).
+    /// For file-backed files, the data is read via pread into an owned buffer.
+    fn get_raw_block_slice(&self, block_index: u16) -> Result<(u32, u32, ArcBytesInner<'_>)> {
         match &self.backing {
             StaticSortedFileBacking::Mmap { mmap } => {
                 self.get_raw_block_slice_mmap(mmap, block_index)
@@ -643,11 +643,13 @@ impl StaticSortedFile {
     }
 
     /// mmap path: reads block offsets and data directly from mapped memory.
-    fn get_raw_block_slice_mmap(
+    /// Returns a borrowed `ArcBytesInner` that references the mmap without cloning
+    /// the `Arc<Mmap>`. The caller can promote to `ArcBytes` via `into_static()` if needed.
+    fn get_raw_block_slice_mmap<'a>(
         &self,
-        mmap: &Arc<Mmap>,
+        mmap: &'a Arc<Mmap>,
         block_index: u16,
-    ) -> Result<(u32, u32, ArcBytes)> {
+    ) -> Result<(u32, u32, ArcBytesInner<'a>)> {
         #[cfg(feature = "strict_checks")]
         if block_index >= self.meta.block_count {
             bail!(
@@ -724,7 +726,7 @@ impl StaticSortedFile {
         );
         let block = &mmap[block_start + BLOCK_HEADER_SIZE..block_end];
         // SAFETY: block points into mmap.
-        let arc_bytes = unsafe { ArcBytes::from_mmap(mmap.clone(), block) };
+        let arc_bytes = unsafe { ArcBytesInner::from_mmap_ref(mmap, block) };
         Ok((uncompressed_length, checksum, arc_bytes))
     }
 
@@ -735,7 +737,7 @@ impl StaticSortedFile {
         file_len: usize,
         block_offsets: &[u32],
         block_index: u16,
-    ) -> Result<(u32, u32, ArcBytes)> {
+    ) -> Result<(u32, u32, ArcBytesInner<'_>)> {
         let block_start = if block_index == 0 {
             0usize
         } else {
@@ -925,7 +927,7 @@ impl StaticSortedFileIter {
                     LazyLookupValue::Medium {
                         uncompressed_size,
                         checksum,
-                        block,
+                        block: block.into_static(),
                     }
                 } else {
                     let value = self.this.handle_key_match(

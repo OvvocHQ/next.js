@@ -5,7 +5,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rstest::rstest;
 
 use crate::{
-    DbConfig, FamilyConfig, FamilyKind,
+    AccessMode, DbConfig, FamilyConfig, FamilyKind,
     constants::{MAX_MEDIUM_VALUE_SIZE, MAX_SMALL_VALUE_SIZE},
     db::{CompactConfig, TurboPersistence},
     parallel_scheduler::ParallelScheduler,
@@ -107,7 +107,11 @@ impl ParallelScheduler for RayonParallelScheduler {
 
 fn config_with_mmap<const F: usize>(mmap: bool) -> DbConfig<F> {
     DbConfig {
-        mmap,
+        access_mode: if mmap {
+            AccessMode::Mmap
+        } else {
+            AccessMode::File
+        },
         ..DbConfig::new()
     }
 }
@@ -135,7 +139,11 @@ fn multi_value_config_with_mmap(mmap: bool) -> DbConfig<1> {
         family_configs: [FamilyConfig {
             kind: FamilyKind::MultiValue,
         }],
-        mmap,
+        access_mode: if mmap {
+            AccessMode::Mmap
+        } else {
+            AccessMode::File
+        },
     }
 }
 
