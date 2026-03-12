@@ -106,10 +106,10 @@ impl MetaEntry {
         self.end_of_amqf_data_offset - self.start_of_amqf_data_offset
     }
 
-    pub fn raw_amqf(&self, meta: &MetaFile) -> Result<ArcBytes<'static>> {
+    pub fn raw_amqf<'a>(&self, meta: &'a MetaFile) -> Result<ArcBytes<'a>> {
         let start = self.start_of_amqf_data_offset as usize;
         let end = self.end_of_amqf_data_offset as usize;
-        Ok(meta.read_range(start, end)?.into_static())
+        meta.read_range(start, end)
     }
 
     pub fn deserialize_amqf(&self, meta: &MetaFile) -> Result<qfilter::Filter> {

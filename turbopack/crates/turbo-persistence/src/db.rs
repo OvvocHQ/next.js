@@ -1067,7 +1067,7 @@ impl<S: ParallelScheduler, const FAMILIES: usize> TurboPersistence<S, FAMILIES> 
                                 let index_in_meta = ssts_with_ranges[index].index_in_meta;
                                 let meta_file = &meta_files[meta_index];
                                 let entry = meta_file.entry(index_in_meta);
-                                let amqf = entry.raw_amqf(meta_file)?.into();
+                                let amqf = entry.raw_amqf(meta_file)?.into_static().into();
                                 let meta = StaticSortedFileBuilderMeta {
                                     min_hash: entry.min_hash(),
                                     max_hash: entry.max_hash(),
