@@ -55,7 +55,7 @@ use turbopack_core::{
     },
     file_source::FileSource,
     ident::{AssetIdent, Layer},
-    module::Module,
+    module::{Module, Modules},
     module_graph::{
         GraphEntries, ModuleGraph, SingleModuleGraph, VisitedModules,
         binding_usage_info::compute_binding_usage_info,
@@ -973,7 +973,7 @@ impl AppProject {
     pub async fn app_module_graph(
         &self,
         rsc_entry: ResolvedVc<Box<dyn Module>>,
-        server_action_loader_module: ResolvedVc<Box<dyn Module>>,
+        server_action_loader_modules: ResolvedVc<Modules>,
         client_shared_entries: Vc<EvaluatableAssets>,
         has_layout_segments: bool,
     ) -> Result<Vc<ModuleGraph>> {
@@ -991,8 +991,14 @@ impl AppProject {
             // Implements layout segment optimization to compute a graph "chain" for each layout
             // segment
             async move {
-                let rsc_entry_chunk_group =
-                    ChunkGroupEntry::Entry(vec![server_action_loader_module, rsc_entry]);
+                let rsc_entry_chunk_group = ChunkGroupEntry::Entry(
+                    server_action_loader_modules
+                        .await?
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(rsc_entry))
+                        .collect(),
+                );
 
                 let mut graphs = vec![];
                 let visited_modules = if has_layout_segments {
@@ -1279,15 +1285,39 @@ impl AppEndpoint {
     }
 
     #[turbo_tasks::function]
-    async fn server_action_loader_module(self: Vc<Self>) -> Result<Vc<Box<dyn Module>>> {
+    async fn server_action_loader_modules(self: Vc<Self>) -> Result<Vc<Modules>> {
         let this = self.await?;
-        // let app_entry = self.app_endpoint_entry().await?;
-        // let runtime = app_entry.config.await?.runtime.unwrap_or_default();
+        let app_entry = self.app_endpoint_entry().await?;
+        let runtime = app_entry.config.await?.runtime.unwrap_or_default();
 
-        Ok(Vc::upcast(ServerActionCollectModule::new(
-            rcstr!("next/server-actions"),
-            this.page.to_string().into(),
-        )))
+        // By only collecting the correct runtime, modules emitted for the other runtime are
+        // never even compiled if unused.
+        Ok(Vc::cell(vec![
+            // Collect inline "use server" function inside of RSC modules
+            ResolvedVc::upcast(
+                ServerActionCollectModule::new(
+                    match runtime {
+                        NextRuntime::NodeJs => rcstr!("next/server-actions/rsc-nodejs"),
+                        NextRuntime::Edge => rcstr!("next/server-actions/rsc-edge"),
+                    },
+                    this.page.to_string().into(),
+                )
+                .to_resolved()
+                .await?,
+            ),
+            // Collect "use server" modules imported from client components.
+            ResolvedVc::upcast(
+                ServerActionCollectModule::new(
+                    match runtime {
+                        NextRuntime::NodeJs => rcstr!("next/server-actions/browser-nodejs"),
+                        NextRuntime::Edge => rcstr!("next/server-actions/browser-edge"),
+                    },
+                    this.page.to_string().into(),
+                )
+                .to_resolved()
+                .await?,
+            ),
+        ]))
     }
 
     #[turbo_tasks::function]
@@ -1342,11 +1372,11 @@ impl AppEndpoint {
 
         let is_app_page = matches!(this.ty, AppEndpointType::Page { .. });
 
-        let server_action_loader = self.server_action_loader_module();
+        let server_action_loader_modules = self.server_action_loader_modules();
 
         let module_graph = this.app_project.app_module_graph(
             *rsc_entry,
-            server_action_loader,
+            server_action_loader_modules,
             // We only need the client runtime entries for pages not for Route Handlers
             if is_app_page {
                 this.app_project.client_runtime_entries()
@@ -1554,7 +1584,7 @@ impl AppEndpoint {
         if emit_rsc_manifests {
             server_assets.insert(
                 create_server_actions_manifest(
-                    self.server_action_loader_module(),
+                    self.server_action_loader_modules(),
                     node_root.clone(),
                     app_entry.original_name.clone(),
                     runtime,
@@ -1879,23 +1909,28 @@ impl AppEndpoint {
         let project = this.app_project.project();
         let app_entry = self.app_endpoint_entry().await?;
         let runtime = app_entry.config.await?.runtime.unwrap_or_default();
-        let server_action_loader = self.server_action_loader_module().to_resolved().await?;
+        let server_action_loaders = self.server_action_loader_modules().await?;
 
         let chunking_context = project.runtime_chunking_context(process_client_assets, runtime);
+
+        let entry_chunk_group = ChunkGroup::Entry(
+            server_action_loaders
+                .iter()
+                .copied()
+                .chain(std::iter::once(app_entry.rsc_entry))
+                .collect(),
+        );
 
         Ok(match runtime {
             NextRuntime::Edge => chunking_context.evaluated_chunk_group_assets(
                 app_entry.rsc_entry.ident(),
-                ChunkGroup::Entry(vec![server_action_loader, app_entry.rsc_entry]),
+                entry_chunk_group,
                 module_graph,
                 AvailabilityInfo::root(),
             ),
             NextRuntime::NodeJs => {
                 async {
                     let mut current_chunk_group = ChunkGroupResult::empty_resolved();
-
-                    let entry_chunk_group =
-                        ChunkGroup::Entry(vec![server_action_loader, app_entry.rsc_entry]);
 
                     let chunk_group_info = module_graph.chunk_group_info();
 
@@ -2153,10 +2188,14 @@ impl Endpoint for AppEndpoint {
     async fn entries(self: Vc<Self>) -> Result<Vc<GraphEntries>> {
         let this = self.await?;
         Ok(Vc::cell(vec![
-            ChunkGroupEntry::Entry(vec![
-                self.server_action_loader_module().to_resolved().await?,
-                self.app_endpoint_entry().await?.rsc_entry,
-            ]),
+            ChunkGroupEntry::Entry(
+                self.server_action_loader_modules()
+                    .await?
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(self.app_endpoint_entry().await?.rsc_entry))
+                    .collect(),
+            ),
             ChunkGroupEntry::Entry(
                 this.app_project
                     .client_runtime_entries()
@@ -2173,12 +2212,12 @@ impl Endpoint for AppEndpoint {
     async fn module_graphs(self: Vc<Self>) -> Result<Vc<ModuleGraphs>> {
         let this = self.await?;
         let app_entry = self.app_endpoint_entry().await?;
-        let server_action_loader = self.server_action_loader_module();
+        let server_action_loader_modules = self.server_action_loader_modules();
         let module_graph = this
             .app_project
             .app_module_graph(
                 *app_entry.rsc_entry,
-                server_action_loader,
+                server_action_loader_modules,
                 this.app_project.client_runtime_entries(),
                 matches!(this.ty, AppEndpointType::Page { .. }),
             )
