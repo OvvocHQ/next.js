@@ -70,19 +70,6 @@ pub struct DbConfig<const FAMILIES: usize> {
     pub access_mode: AccessMode,
 }
 
-impl<const FAMILIES: usize> DbConfig<FAMILIES> {
-    /// Returns a config with all defaults. Suitable for use in `const` contexts
-    /// (unlike `Default::default()`, which reads the `TURBO_PERSISTENCE_MMAP` env var).
-    pub const fn new() -> Self {
-        Self {
-            family_configs: [FamilyConfig {
-                kind: FamilyKind::SingleValue,
-            }; FAMILIES],
-            access_mode: AccessMode::Mmap,
-        }
-    }
-}
-
 /// Reads the `TURBO_PERSISTENCE_MMAP` env var (cached). Returns `AccessMode::File` when the var
 /// is set to `"0"`, `AccessMode::Mmap` otherwise.
 fn access_mode_env_var() -> AccessMode {
@@ -99,12 +86,22 @@ fn access_mode_env_var() -> AccessMode {
     *ACCESS_MODE_ENV
 }
 
+impl<const FAMILIES: usize> DbConfig<FAMILIES> {
+    /// Returns a config with all defaults, reading the `TURBO_PERSISTENCE_MMAP` env var
+    /// to determine the access mode.
+    pub fn new() -> Self {
+        Self {
+            family_configs: [FamilyConfig {
+                kind: FamilyKind::SingleValue,
+            }; FAMILIES],
+            access_mode: access_mode_env_var(),
+        }
+    }
+}
+
 impl<const FAMILIES: usize> Default for DbConfig<FAMILIES> {
     fn default() -> Self {
-        Self {
-            access_mode: access_mode_env_var(),
-            ..Self::new()
-        }
+        Self::new()
     }
 }
 pub use key::{KeyBase, QueryKey, StoreKey, hash_key};

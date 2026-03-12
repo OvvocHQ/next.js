@@ -50,7 +50,7 @@ pub struct TurboKeyValueDatabase {
 
 impl TurboKeyValueDatabase {
     pub fn new(versioned_path: PathBuf, is_ci: bool, is_short_session: bool) -> Result<Self> {
-        const CONFIG: DbConfig<FAMILIES> = DbConfig {
+        let config = DbConfig {
             family_configs: [
                 KeySpace::Infra.family_config(),
                 KeySpace::TaskMeta.family_config(),
@@ -59,7 +59,7 @@ impl TurboKeyValueDatabase {
             ],
             ..DbConfig::new()
         };
-        let db = Arc::new(TurboPersistence::open_with_config(versioned_path, CONFIG)?);
+        let db = Arc::new(TurboPersistence::open_with_config(versioned_path, config)?);
         Ok(Self {
             db: db.clone(),
             compact_join_handle: Mutex::new(None),
