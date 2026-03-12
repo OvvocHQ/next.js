@@ -109,7 +109,7 @@ impl MetaEntry {
     pub fn raw_amqf(&self, meta: &MetaFile) -> Result<ArcBytes<'static>> {
         let start = self.start_of_amqf_data_offset as usize;
         let end = self.end_of_amqf_data_offset as usize;
-        meta.read_range(start, end)
+        Ok(meta.read_range(start, end)?.into_static())
     }
 
     pub fn deserialize_amqf(&self, meta: &MetaFile) -> Result<qfilter::Filter> {
@@ -371,12 +371,12 @@ impl MetaFile {
     }
 
     /// Reads a byte range from the AMQF data region (offsets relative to the AMQF data start).
-    fn read_range(&self, start: usize, end: usize) -> Result<ArcBytes<'static>> {
+    fn read_range(&self, start: usize, end: usize) -> Result<ArcBytes<'_>> {
         match &self.backing {
             MetaFileBacking::Mmap { mmap } => {
                 let slice = &mmap[start..end];
                 // SAFETY: slice points into mmap.
-                Ok(unsafe { ArcBytes::from_mmap(mmap.clone(), slice) })
+                Ok(unsafe { ArcBytes::from_mmap_ref(mmap, slice) })
             }
             MetaFileBacking::File { file, base_offset } => {
                 let len = end - start;
