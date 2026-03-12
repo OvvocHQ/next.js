@@ -15,7 +15,7 @@ use rustc_hash::FxHasher;
 use smallvec::SmallVec;
 
 use crate::{
-    QueryKey,
+    AccessMode, QueryKey,
     arc_bytes::ArcBytes,
     compression::{checksum_block, decompress_into_arc},
     constants::MAX_INLINE_VALUE_SIZE,
@@ -202,11 +202,16 @@ pub struct StaticSortedFile {
 
 impl StaticSortedFile {
     /// Opens an SST file at the given path. This memory maps the file (or opens it for direct
-    /// reads if `use_mmap` is false), but does not read block data yet — it's lazy read on demand.
-    pub fn open(db_path: &Path, meta: StaticSortedFileMetaData, use_mmap: bool) -> Result<Self> {
+    /// reads if `access_mode` is `File`), but does not read block data yet — it's lazy read on
+    /// demand.
+    pub fn open(
+        db_path: &Path,
+        meta: StaticSortedFileMetaData,
+        access_mode: AccessMode,
+    ) -> Result<Self> {
         let filename = format!("{:08}.sst", meta.sequence_number);
         let path = db_path.join(&filename);
-        Self::open_internal(path, meta, false, use_mmap)
+        Self::open_internal(path, meta, false, access_mode)
             .with_context(|| format!("Unable to open static sorted file {filename}"))
     }
 
@@ -216,11 +221,11 @@ impl StaticSortedFile {
     pub fn open_for_compaction(
         db_path: &Path,
         meta: StaticSortedFileMetaData,
-        use_mmap: bool,
+        access_mode: AccessMode,
     ) -> Result<Self> {
         let filename = format!("{:08}.sst", meta.sequence_number);
         let path = db_path.join(&filename);
-        Self::open_internal(path, meta, true, use_mmap)
+        Self::open_internal(path, meta, true, access_mode)
             .with_context(|| format!("Unable to open static sorted file {filename}"))
     }
 
@@ -228,12 +233,12 @@ impl StaticSortedFile {
         path: PathBuf,
         meta: StaticSortedFileMetaData,
         sequential: bool,
-        use_mmap: bool,
+        access_mode: AccessMode,
     ) -> Result<Self> {
         let file = File::open(&path)
             .with_context(|| format!("Failed to open SST file {}", path.display()))?;
 
-        let backing = if use_mmap {
+        let backing = if access_mode == AccessMode::Mmap {
             let mmap = unsafe { Mmap::map(&file) }.with_context(|| {
                 format!(
                     "Failed to mmap SST file {} ({} bytes)",

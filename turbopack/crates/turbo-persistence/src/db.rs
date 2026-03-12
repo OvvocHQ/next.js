@@ -21,7 +21,7 @@ use tracing::span::EnteredSpan;
 
 pub use crate::compaction::selector::CompactConfig;
 use crate::{
-    DbConfig, FamilyKind, QueryKey,
+    AccessMode, DbConfig, FamilyKind, QueryKey,
     arc_bytes::ArcBytes,
     compaction::selector::{Compactable, get_merge_segments},
     compression::{checksum_block, decompress_into_arc},
@@ -384,7 +384,7 @@ impl<S: ParallelScheduler, const FAMILIES: usize> TurboPersistence<S, FAMILIES> 
         let mut meta_files = self
             .parallel_scheduler
             .parallel_map_collect::<_, _, Result<Vec<MetaFile>>>(&meta_files, |&seq| {
-                let meta_file = MetaFile::open(&self.path, seq, self.config.mmap)?;
+                let meta_file = MetaFile::open(&self.path, seq, self.config.access_mode)?;
                 Ok(meta_file)
             })?;
 
@@ -408,7 +408,7 @@ impl<S: ParallelScheduler, const FAMILIES: usize> TurboPersistence<S, FAMILIES> 
 
         // Read the blob data either via mmap or plain file reads, avoiding an
         // extra copy in the mmap path.
-        let data: Either<Mmap, Vec<u8>> = if self.config.mmap {
+        let data: Either<Mmap, Vec<u8>> = if self.config.access_mode == AccessMode::Mmap {
             let mmap = unsafe { Mmap::map(&file) }.with_context(|| {
                 format!(
                     "Failed to mmap blob file {} ({} bytes)",
@@ -595,7 +595,7 @@ impl<S: ParallelScheduler, const FAMILIES: usize> TurboPersistence<S, FAMILIES> 
             .parallel_scheduler
             .parallel_map_collect_owned::<_, _, Result<Vec<_>>>(new_meta_files, |(seq, file)| {
                 file.sync_all()?;
-                let meta_file = MetaFile::open(&self.path, seq, self.config.mmap)?;
+                let meta_file = MetaFile::open(&self.path, seq, self.config.access_mode)?;
                 Ok(meta_file)
             })?;
 
@@ -1095,7 +1095,7 @@ impl<S: ParallelScheduler, const FAMILIES: usize> TurboPersistence<S, FAMILIES> 
                                     StaticSortedFile::open_for_compaction(
                                         path,
                                         entry.sst_metadata(),
-                                        self.config.mmap,
+                                        self.config.access_mode,
                                     )?
                                     .try_into_iter()
                                 })

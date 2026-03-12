@@ -30,6 +30,15 @@ pub use arc_bytes::ArcBytes;
 pub use compression::checksum_block;
 pub use db::{CompactConfig, MetaFileEntryInfo, MetaFileInfo, TurboPersistence};
 
+/// Controls how SST and meta files are read from disk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessMode {
+    /// Memory-map the file and access blocks via the mapped region.
+    Mmap,
+    /// Read blocks directly from the file via pread (no mmap).
+    File,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FamilyKind {
     /// Each key maps to a single value (default LSM behavior).
@@ -57,9 +66,8 @@ pub struct FamilyConfig {
 #[derive(Clone, Debug)]
 pub struct DbConfig<const FAMILIES: usize> {
     pub family_configs: [FamilyConfig; FAMILIES],
-    /// Whether to use memory-mapped I/O for reading SST and meta files.
-    /// When false, blocks are read directly from files via pread.
-    pub mmap: bool,
+    /// How SST and meta files are read from disk.
+    pub access_mode: AccessMode,
 }
 
 impl<const FAMILIES: usize> DbConfig<FAMILIES> {
@@ -70,26 +78,31 @@ impl<const FAMILIES: usize> DbConfig<FAMILIES> {
             family_configs: [FamilyConfig {
                 kind: FamilyKind::SingleValue,
             }; FAMILIES],
-            mmap: true,
+            access_mode: AccessMode::Mmap,
         }
     }
 }
 
-/// Reads the `TURBO_PERSISTENCE_MMAP` env var (cached). Returns `false` when the var is set to
-/// `"0"`, `true` otherwise.
-fn mmap_env_var() -> bool {
-    static MMAP_ENV: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
-        std::env::var("TURBO_PERSISTENCE_MMAP")
-            .map(|v| v != "0")
-            .unwrap_or(true)
+/// Reads the `TURBO_PERSISTENCE_MMAP` env var (cached). Returns `AccessMode::File` when the var
+/// is set to `"0"`, `AccessMode::Mmap` otherwise.
+fn access_mode_env_var() -> AccessMode {
+    static ACCESS_MODE_ENV: std::sync::LazyLock<AccessMode> = std::sync::LazyLock::new(|| {
+        if std::env::var("TURBO_PERSISTENCE_MMAP")
+            .map(|v| v == "0")
+            .unwrap_or(false)
+        {
+            AccessMode::File
+        } else {
+            AccessMode::Mmap
+        }
     });
-    *MMAP_ENV
+    *ACCESS_MODE_ENV
 }
 
 impl<const FAMILIES: usize> Default for DbConfig<FAMILIES> {
     fn default() -> Self {
         Self {
-            mmap: mmap_env_var(),
+            access_mode: access_mode_env_var(),
             ..Self::new()
         }
     }

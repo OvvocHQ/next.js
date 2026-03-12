@@ -17,7 +17,7 @@ use smallvec::SmallVec;
 use turbo_bincode::turbo_bincode_decode;
 
 use crate::{
-    QueryKey,
+    AccessMode, QueryKey,
     arc_bytes::ArcBytes,
     lookup_entry::LookupValue,
     mmap_helper::advise_mmap_for_persistence,
@@ -134,12 +134,14 @@ impl MetaEntry {
 
     pub fn sst(&self, meta: &MetaFile) -> Result<&StaticSortedFile> {
         self.sst.get_or_try_init(|| {
-            StaticSortedFile::open(&meta.db_path, self.sst_data, meta.use_mmap).with_context(|| {
-                format!(
-                    "Unable to open static sorted file referenced from {:08}.meta",
-                    meta.sequence_number()
-                )
-            })
+            StaticSortedFile::open(&meta.db_path, self.sst_data, meta.access_mode).with_context(
+                || {
+                    format!(
+                        "Unable to open static sorted file referenced from {:08}.meta",
+                        meta.sequence_number()
+                    )
+                },
+            )
         })
     }
 
@@ -248,17 +250,17 @@ pub struct MetaFile {
     end_of_used_keys_amqf_data_offset: u32,
     /// The backing storage for AMQF data.
     backing: MetaFileBacking,
-    /// Whether to use mmap for SST files opened from this meta file.
-    use_mmap: bool,
+    /// How SST files opened from this meta file should be read.
+    access_mode: AccessMode,
 }
 
 impl MetaFile {
     /// Opens a meta file at the given path. The AMQF data portion is either memory mapped
-    /// or read on demand from the file, depending on `use_mmap`.
-    pub fn open(db_path: &Path, sequence_number: u32, use_mmap: bool) -> Result<Self> {
+    /// or read on demand from the file, depending on `access_mode`.
+    pub fn open(db_path: &Path, sequence_number: u32, access_mode: AccessMode) -> Result<Self> {
         let filename = format!("{sequence_number:08}.meta");
         let path = db_path.join(&filename);
-        Self::open_internal(db_path.to_path_buf(), sequence_number, &path, use_mmap)
+        Self::open_internal(db_path.to_path_buf(), sequence_number, &path, access_mode)
             .with_context(|| format!("Unable to open meta file {filename}"))
     }
 
@@ -266,7 +268,7 @@ impl MetaFile {
         db_path: PathBuf,
         sequence_number: u32,
         path: &Path,
-        use_mmap: bool,
+        access_mode: AccessMode,
     ) -> Result<Self> {
         let mut file = BufReader::new(File::open(path)?);
         let magic = file.read_u32::<BE>()?;
@@ -308,7 +310,7 @@ impl MetaFile {
         let base_offset = file.stream_position()?;
         let file = file.into_inner();
 
-        let backing = if use_mmap {
+        let backing = if access_mode == AccessMode::Mmap {
             let mut options = MmapOptions::new();
             options.offset(base_offset);
             let mmap = unsafe { options.map(&file) }
@@ -333,7 +335,7 @@ impl MetaFile {
             start_of_used_keys_amqf_data_offset,
             end_of_used_keys_amqf_data_offset,
             backing,
-            use_mmap,
+            access_mode,
         })
     }
 
