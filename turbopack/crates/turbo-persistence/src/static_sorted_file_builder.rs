@@ -256,11 +256,11 @@ pub enum EntryValue<'l> {
     Deleted,
 }
 
-/// Owned byte data for an AMQF filter, backed by either an `ArcBytes` (zero-copy from
+/// Owned byte data for an AMQF filter, backed by either an `ArcBytes<'static>` (zero-copy from
 /// mmap / pread) or a `Vec<u8>` (freshly serialized).
 #[derive(Clone)]
 pub enum AmqfData {
-    ArcBytes(ArcBytes),
+    ArcBytes(ArcBytes<'static>),
     Vec(Vec<u8>),
 }
 
@@ -281,8 +281,8 @@ impl fmt::Debug for AmqfData {
     }
 }
 
-impl From<ArcBytes> for AmqfData {
-    fn from(a: ArcBytes) -> Self {
+impl From<ArcBytes<'static>> for AmqfData {
+    fn from(a: ArcBytes<'static>) -> Self {
         AmqfData::ArcBytes(a)
     }
 }
@@ -1273,7 +1273,7 @@ mod tests {
     };
 
     type TestBlockCache =
-        Cache<(u32, u16), crate::ArcBytes, BlockWeighter, BuildHasherDefault<FxHasher>>;
+        Cache<(u32, u16), crate::ArcBytes<'static>, BlockWeighter, BuildHasherDefault<FxHasher>>;
 
     fn make_cache() -> TestBlockCache {
         TestBlockCache::with(

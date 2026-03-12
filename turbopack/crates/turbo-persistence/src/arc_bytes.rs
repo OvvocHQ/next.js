@@ -31,24 +31,19 @@ enum Backing<'l> {
 /// A byte slice backed by either an `Arc<[u8]>`, a memory-mapped file, or a borrowed
 /// reference to a memory-mapped file.
 ///
-/// Most code uses `ArcBytes` (i.e. `ArcBytesInner<'static>`) which owns its backing storage.
-/// The shorter lifetime `ArcBytes<'l>` is used when the backing is borrowed (e.g. `MmapRef`),
-/// and can be promoted to `'static` via [`ArcBytesInner::into_static`].
+/// Most code uses `ArcBytes<'static>` which owns its backing storage.
+/// A shorter lifetime is used when the backing is borrowed (e.g. `MmapRef`),
+/// and can be promoted to `'static` via [`ArcBytes::into_static`].
 #[derive(Clone)]
-pub struct ArcBytesInner<'l> {
+pub struct ArcBytes<'l> {
     data: *const [u8],
     backing: Backing<'l>,
 }
 
-/// An `ArcBytesInner` that owns its backing storage (`'static` lifetime).
-///
-/// This is the type used throughout most of the codebase.
-pub type ArcBytes = ArcBytesInner<'static>;
+unsafe impl Send for ArcBytes<'_> {}
+unsafe impl Sync for ArcBytes<'_> {}
 
-unsafe impl Send for ArcBytesInner<'_> {}
-unsafe impl Sync for ArcBytesInner<'_> {}
-
-impl From<Arc<[u8]>> for ArcBytesInner<'_> {
+impl From<Arc<[u8]>> for ArcBytes<'_> {
     fn from(arc: Arc<[u8]>) -> Self {
         Self {
             data: &*arc as *const [u8],
@@ -57,13 +52,13 @@ impl From<Arc<[u8]>> for ArcBytesInner<'_> {
     }
 }
 
-impl From<Box<[u8]>> for ArcBytesInner<'_> {
+impl From<Box<[u8]>> for ArcBytes<'_> {
     fn from(b: Box<[u8]>) -> Self {
         Self::from(Arc::from(b))
     }
 }
 
-impl Deref for ArcBytesInner<'_> {
+impl Deref for ArcBytes<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -71,33 +66,33 @@ impl Deref for ArcBytesInner<'_> {
     }
 }
 
-impl Borrow<[u8]> for ArcBytesInner<'_> {
+impl Borrow<[u8]> for ArcBytes<'_> {
     fn borrow(&self) -> &[u8] {
         self
     }
 }
 
-impl Hash for ArcBytesInner<'_> {
+impl Hash for ArcBytes<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
 }
 
-impl PartialEq for ArcBytesInner<'_> {
+impl PartialEq for ArcBytes<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.deref().eq(other.deref())
     }
 }
 
-impl Debug for ArcBytesInner<'_> {
+impl Debug for ArcBytes<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(&**self, f)
     }
 }
 
-impl Eq for ArcBytesInner<'_> {}
+impl Eq for ArcBytes<'_> {}
 
-impl Read for ArcBytesInner<'_> {
+impl Read for ArcBytes<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let available = &**self;
         let len = std::cmp::min(buf.len(), available.len());
@@ -123,9 +118,9 @@ fn backing_as_slice<'a>(backing: &'a Backing<'a>) -> &'a [u8] {
     }
 }
 
-impl<'l> ArcBytesInner<'l> {
+impl<'l> ArcBytes<'l> {
     /// Returns a new `ArcBytes` that points to a sub-range of the current slice.
-    pub fn slice(self, range: Range<usize>) -> ArcBytesInner<'l> {
+    pub fn slice(self, range: Range<usize>) -> ArcBytes<'l> {
         let data = &*self;
         let data = &data[range] as *const [u8];
         Self {
@@ -141,7 +136,7 @@ impl<'l> ArcBytesInner<'l> {
     /// The caller must ensure that `subslice` points to memory within this ArcBytes'
     /// backing storage (not just within the current slice view, but anywhere in the original
     /// backing data).
-    pub unsafe fn slice_from_subslice(&self, subslice: &[u8]) -> ArcBytesInner<'l> {
+    pub unsafe fn slice_from_subslice(&self, subslice: &[u8]) -> ArcBytes<'l> {
         debug_assert!(
             is_subslice_of(subslice, backing_as_slice(&self.backing)),
             "slice_from_subslice: subslice is not within the backing storage"
@@ -156,8 +151,8 @@ impl<'l> ArcBytesInner<'l> {
     ///
     /// For `Arc` and `Mmap` backings this is a no-op. For `MmapRef` backings this
     /// clones the inner `Arc<Mmap>` to produce an owned backing.
-    pub fn into_static(self) -> ArcBytes {
-        ArcBytesInner {
+    pub fn into_static(self) -> ArcBytes<'static> {
+        ArcBytes {
             data: self.data,
             backing: match self.backing {
                 Backing::Arc { _backing } => Backing::Arc { _backing },
@@ -173,39 +168,35 @@ impl<'l> ArcBytesInner<'l> {
     pub fn is_mmap_backed(&self) -> bool {
         matches!(self.backing, Backing::Mmap { .. } | Backing::MmapRef { .. })
     }
-}
 
-impl ArcBytes {
     /// Creates an `ArcBytes` backed by a memory-mapped file.
     ///
     /// # Safety
     ///
     /// The caller must ensure that `subslice` points to memory within the given `mmap`.
-    pub unsafe fn from_mmap(mmap: Arc<Mmap>, subslice: &[u8]) -> ArcBytes {
+    pub unsafe fn from_mmap(mmap: Arc<Mmap>, subslice: &[u8]) -> ArcBytes<'static> {
         debug_assert!(
             is_subslice_of(subslice, &mmap),
             "from_mmap: subslice is not within the mmap"
         );
-        ArcBytesInner {
+        ArcBytes {
             data: subslice as *const [u8],
             backing: Backing::Mmap { _backing: mmap },
         }
     }
-}
 
-impl<'l> ArcBytesInner<'l> {
     /// Creates an `ArcBytes` that borrows a reference to an `Arc<Mmap>`, avoiding an
     /// `Arc::clone`. The returned `ArcBytes` is only valid for the lifetime of the reference.
     ///
     /// # Safety
     ///
     /// The caller must ensure that `subslice` points to memory within the given `mmap`.
-    pub unsafe fn from_mmap_ref(mmap: &'l Arc<Mmap>, subslice: &[u8]) -> ArcBytesInner<'l> {
+    pub unsafe fn from_mmap_ref(mmap: &'l Arc<Mmap>, subslice: &[u8]) -> ArcBytes<'l> {
         debug_assert!(
             is_subslice_of(subslice, mmap),
             "from_mmap_ref: subslice is not within the mmap"
         );
-        ArcBytesInner {
+        ArcBytes {
             data: subslice as *const [u8],
             backing: Backing::MmapRef { _backing: mmap },
         }

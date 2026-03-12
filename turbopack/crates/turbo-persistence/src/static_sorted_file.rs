@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 
 use crate::{
     AccessMode, QueryKey,
-    arc_bytes::{ArcBytes, ArcBytesInner},
+    arc_bytes::ArcBytes,
     compression::{checksum_block, decompress_into_arc},
     constants::MAX_INLINE_VALUE_SIZE,
     lookup_entry::{LazyLookupValue, LookupEntry, LookupValue},
@@ -79,8 +79,8 @@ impl From<LookupValue> for SstLookupResult {
 #[derive(Clone, Default)]
 pub struct BlockWeighter;
 
-impl quick_cache::Weighter<(u32, u16), ArcBytes> for BlockWeighter {
-    fn weight(&self, _key: &(u32, u16), val: &ArcBytes) -> u64 {
+impl quick_cache::Weighter<(u32, u16), ArcBytes<'static>> for BlockWeighter {
+    fn weight(&self, _key: &(u32, u16), val: &ArcBytes<'static>) -> u64 {
         if val.is_mmap_backed() {
             // Mmap-backed blocks are cheap (just a pointer + Arc clone), so we
             // assign a small fixed weight. Caching them avoids re-parsing block
@@ -92,20 +92,24 @@ impl quick_cache::Weighter<(u32, u16), ArcBytes> for BlockWeighter {
     }
 }
 
-pub type BlockCache =
-    quick_cache::sync::Cache<(u32, u16), ArcBytes, BlockWeighter, BuildHasherDefault<FxHasher>>;
+pub type BlockCache = quick_cache::sync::Cache<
+    (u32, u16),
+    ArcBytes<'static>,
+    BlockWeighter,
+    BuildHasherDefault<FxHasher>,
+>;
 
 /// Trait abstracting value block caching for `handle_key_match`.
 ///
 /// Implemented by `&BlockCache` (global shared cache for lookups) and
-/// `&mut Option<(u16, ArcBytes)>` (lightweight single-entry cache for
+/// `&mut Option<(u16, ArcBytes<'static>)>` (lightweight single-entry cache for
 /// sequential iteration).
 trait ValueBlockCache {
-    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes>;
+    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes<'static>>;
 }
 
 impl ValueBlockCache for &BlockCache {
-    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes> {
+    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes<'static>> {
         let this = &sst;
         let block = match self.get_value_or_guard(&(this.meta.sequence_number, block_index), None) {
             GuardResult::Value(block) => block,
@@ -120,8 +124,8 @@ impl ValueBlockCache for &BlockCache {
     }
 }
 
-impl ValueBlockCache for &mut Option<(u16, ArcBytes)> {
-    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes> {
+impl ValueBlockCache for &mut Option<(u16, ArcBytes<'static>)> {
+    fn get_or_read(self, sst: &StaticSortedFile, block_index: u16) -> Result<ArcBytes<'static>> {
         if let Some((idx, block)) = self.as_ref()
             && *idx == block_index
         {
@@ -369,7 +373,7 @@ impl StaticSortedFile {
     /// If `FIND_ALL` is true, collects all entries with the same key.
     fn lookup_key_block<K: QueryKey, const FIND_ALL: bool>(
         &self,
-        mut block: ArcBytes,
+        mut block: ArcBytes<'static>,
         key_hash: u64,
         key: &K,
         has_hash: bool,
@@ -396,7 +400,7 @@ impl StaticSortedFile {
     /// enabling direct indexing during binary search.
     fn lookup_fixed_key_block<K: QueryKey, const FIND_ALL: bool>(
         &self,
-        mut block: ArcBytes,
+        mut block: ArcBytes<'static>,
         key_hash: u64,
         key: &K,
         has_hash: bool,
@@ -430,7 +434,7 @@ impl StaticSortedFile {
     /// key blocks (offset table lookup) and fixed-size key blocks (stride-based indexing).
     fn lookup_block_inner<'a, K: QueryKey, const FIND_ALL: bool>(
         &self,
-        block: &ArcBytes,
+        block: &ArcBytes<'static>,
         entry_count: usize,
         key_hash: u64,
         key: &K,
@@ -513,7 +517,7 @@ impl StaticSortedFile {
         &self,
         ty: u8,
         mut val: &[u8],
-        key_block_arc: &ArcBytes,
+        key_block_arc: &ArcBytes<'static>,
         value_block_cache: impl ValueBlockCache,
     ) -> Result<LookupValue> {
         Ok(match ty {
@@ -550,7 +554,7 @@ impl StaticSortedFile {
         &self,
         block: u16,
         key_block_cache: &BlockCache,
-    ) -> Result<ArcBytes, anyhow::Error> {
+    ) -> Result<ArcBytes<'static>, anyhow::Error> {
         Ok(
             match key_block_cache.get_value_or_guard(&(self.meta.sequence_number, block), None) {
                 GuardResult::Value(block) => block,
@@ -565,17 +569,17 @@ impl StaticSortedFile {
     }
 
     /// Reads a key block from the file.
-    fn read_key_block(&self, block_index: u16) -> Result<ArcBytes> {
+    fn read_key_block(&self, block_index: u16) -> Result<ArcBytes<'static>> {
         self.read_block(block_index)
     }
 
     /// Reads a small value block from the file.
-    fn read_small_value_block(&self, block_index: u16) -> Result<ArcBytes> {
+    fn read_small_value_block(&self, block_index: u16) -> Result<ArcBytes<'static>> {
         self.read_block(block_index)
     }
 
     /// Reads a value block from the file.
-    fn read_value_block(&self, block_index: u16) -> Result<ArcBytes> {
+    fn read_value_block(&self, block_index: u16) -> Result<ArcBytes<'static>> {
         self.read_block(block_index)
     }
 
@@ -600,7 +604,7 @@ impl StaticSortedFile {
     /// The checksum is verified on the raw on-disk data **before** decompression, so
     /// corruption is caught before passing data to LZ4.
     #[tracing::instrument(level = "info", name = "reading database block", skip_all)]
-    fn read_block(&self, block_index: u16) -> Result<ArcBytes> {
+    fn read_block(&self, block_index: u16) -> Result<ArcBytes<'static>> {
         let (uncompressed_length, expected_checksum, block) =
             self.get_raw_block_slice(block_index).with_context(|| {
                 format!(
@@ -627,9 +631,9 @@ impl StaticSortedFile {
     }
 
     /// Returns `(uncompressed_length, checksum, block_data)`.
-    /// For mmap-backed files, the returned `ArcBytesInner` borrows the mmap (no Arc clone).
+    /// For mmap-backed files, the returned `ArcBytes` borrows the mmap (no Arc clone).
     /// For file-backed files, the data is read via pread into an owned buffer.
-    fn get_raw_block_slice(&self, block_index: u16) -> Result<(u32, u32, ArcBytesInner<'_>)> {
+    fn get_raw_block_slice(&self, block_index: u16) -> Result<(u32, u32, ArcBytes<'_>)> {
         match &self.backing {
             StaticSortedFileBacking::Mmap { mmap } => {
                 self.get_raw_block_slice_mmap(mmap, block_index)
@@ -643,13 +647,13 @@ impl StaticSortedFile {
     }
 
     /// mmap path: reads block offsets and data directly from mapped memory.
-    /// Returns a borrowed `ArcBytesInner` that references the mmap without cloning
-    /// the `Arc<Mmap>`. The caller can promote to `ArcBytes` via `into_static()` if needed.
+    /// Returns a borrowed `ArcBytes` that references the mmap without cloning
+    /// the `Arc<Mmap>`. The caller can promote to `ArcBytes<'static>` via `into_static()`.
     fn get_raw_block_slice_mmap<'a>(
         &self,
         mmap: &'a Arc<Mmap>,
         block_index: u16,
-    ) -> Result<(u32, u32, ArcBytesInner<'a>)> {
+    ) -> Result<(u32, u32, ArcBytes<'a>)> {
         #[cfg(feature = "strict_checks")]
         if block_index >= self.meta.block_count {
             bail!(
@@ -726,7 +730,7 @@ impl StaticSortedFile {
         );
         let block = &mmap[block_start + BLOCK_HEADER_SIZE..block_end];
         // SAFETY: block points into mmap.
-        let arc_bytes = unsafe { ArcBytesInner::from_mmap_ref(mmap, block) };
+        let arc_bytes = unsafe { ArcBytes::from_mmap_ref(mmap, block) };
         Ok((uncompressed_length, checksum, arc_bytes))
     }
 
@@ -737,7 +741,7 @@ impl StaticSortedFile {
         file_len: usize,
         block_offsets: &[u32],
         block_index: u16,
-    ) -> Result<(u32, u32, ArcBytesInner<'_>)> {
+    ) -> Result<(u32, u32, ArcBytes<'_>)> {
         let block_start = if block_index == 0 {
             0usize
         } else {
@@ -773,7 +777,7 @@ impl StaticSortedFile {
         let checksum = u32::from_be_bytes(buf[4..8].try_into().unwrap());
 
         // Remove the header, keep only the block data
-        let data: ArcBytes =
+        let data: ArcBytes<'static> =
             ArcBytes::from(Arc::from(buf.into_boxed_slice())).slice(BLOCK_HEADER_SIZE..total_len);
         Ok((uncompressed_length, checksum, data))
     }
@@ -788,12 +792,15 @@ pub struct StaticSortedFileIter {
     /// Single-entry value block cache. Within a key block, entries reference
     /// value blocks sequentially and don't revisit earlier blocks, so caching
     /// just the current one avoids redundant decompression.
-    value_block_cache: Option<(u16, ArcBytes)>,
+    value_block_cache: Option<(u16, ArcBytes<'static>)>,
 }
 
 enum CurrentKeyBlockKind {
     /// Variable-size entries with an offset table for random access.
-    Variable { offsets: ArcBytes, hash_len: u8 },
+    Variable {
+        offsets: ArcBytes<'static>,
+        hash_len: u8,
+    },
     /// Fixed-size entries with uniform key size and value type (no offset table).
     Fixed {
         hash_len: u8,
@@ -805,13 +812,13 @@ enum CurrentKeyBlockKind {
 
 struct CurrentKeyBlock {
     kind: CurrentKeyBlockKind,
-    entries: ArcBytes,
+    entries: ArcBytes<'static>,
     entry_count: usize,
     index: usize,
 }
 
 struct CurrentIndexBlock {
-    entries: ArcBytes,
+    entries: ArcBytes<'static>,
     block_indices_count: usize,
     index: usize,
 }

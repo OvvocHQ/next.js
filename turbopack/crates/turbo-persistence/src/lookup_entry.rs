@@ -12,7 +12,7 @@ pub enum LookupValue {
     /// The value is stored in the SST file.
     ///
     /// The ArcBytes will be pointing either at a keyblock or a value block in the SST
-    Slice { value: ArcBytes },
+    Slice { value: ArcBytes<'static> },
     /// The value is stored in a blob file.
     Blob { sequence_number: u32 },
 }
@@ -25,7 +25,7 @@ pub enum LazyLookupValue {
     Medium {
         uncompressed_size: u32,
         checksum: u32,
-        block: ArcBytes,
+        block: ArcBytes<'static>,
     },
 }
 
@@ -81,7 +81,7 @@ pub struct LookupEntry {
     /// The hash of the key.
     pub hash: u64,
     /// The key.
-    pub key: ArcBytes,
+    pub key: ArcBytes<'static>,
     /// The value.
     pub value: LazyLookupValue,
 }

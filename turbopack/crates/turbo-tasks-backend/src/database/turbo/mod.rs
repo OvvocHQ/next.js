@@ -85,7 +85,7 @@ impl KeyValueDatabase for TurboKeyValueDatabase {
     }
 
     type ValueBuffer<'l>
-        = ArcBytes
+        = ArcBytes<'static>
     where
         Self: 'l;
 
@@ -213,7 +213,7 @@ pub struct TurboWriteBatch<'a> {
 
 impl<'a> BaseWriteBatch<'a> for TurboWriteBatch<'a> {
     type ValueBuffer<'l>
-        = ArcBytes
+        = ArcBytes<'static>
     where
         Self: 'l,
         'a: 'l;
