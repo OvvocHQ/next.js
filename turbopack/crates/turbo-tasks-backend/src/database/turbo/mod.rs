@@ -30,7 +30,7 @@ mod parallel_scheduler;
 const FAMILIES: usize = 4;
 
 const MB: u64 = 1024 * 1024;
-const COMPACT_CONFIG: CompactConfig = CompactConfig {
+pub const COMPACT_CONFIG: CompactConfig = CompactConfig {
     min_merge_count: 3,
     optimal_merge_count: 8,
     max_merge_count: 64,
@@ -46,10 +46,16 @@ pub struct TurboKeyValueDatabase {
     is_ci: bool,
     is_short_session: bool,
     is_fresh: bool,
+    skip_compaction: bool,
 }
 
 impl TurboKeyValueDatabase {
-    pub fn new(versioned_path: PathBuf, is_ci: bool, is_short_session: bool) -> Result<Self> {
+    pub fn new(
+        versioned_path: PathBuf,
+        is_ci: bool,
+        is_short_session: bool,
+        skip_compaction: bool,
+    ) -> Result<Self> {
         const CONFIG: DbConfig<FAMILIES> = DbConfig {
             family_configs: [
                 KeySpace::Infra.family_config(),
@@ -65,6 +71,7 @@ impl TurboKeyValueDatabase {
             is_ci,
             is_short_session,
             is_fresh: db.is_empty(),
+            skip_compaction,
         })
     }
 }
@@ -127,7 +134,7 @@ impl KeyValueDatabase for TurboKeyValueDatabase {
         }
         // Compact the database on shutdown
         // (Avoid compacting a fresh database since we don't have any usage info yet)
-        if !self.is_fresh {
+        if !self.is_fresh && !self.skip_compaction {
             if self.is_ci {
                 // Fully compact in CI to reduce cache size
                 do_compact(
