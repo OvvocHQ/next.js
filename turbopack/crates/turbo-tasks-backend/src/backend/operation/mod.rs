@@ -927,7 +927,6 @@ impl Drop for TaskGuardImpl<'_> {
 impl TaskGuardImpl<'_> {
     /// Verify that the task guard restored the correct category
     /// before accessing the data.
-    #[inline]
     #[track_caller]
     fn check_access(&self, category: crate::backend::storage::SpecificTaskDataCategory) {
         match category {
@@ -1027,7 +1026,6 @@ impl TaskStorageAccessors for TaskGuardImpl<'_> {
         &mut self.task
     }
 
-    #[inline(always)]
     fn track_modification(
         &mut self,
         category: crate::backend::storage::SpecificTaskDataCategory,
