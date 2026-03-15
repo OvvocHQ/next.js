@@ -14,7 +14,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   FlightRouterState,
   Segment,
-} from '../../../../shared/lib/app-router-types'
+} from '../../shared/lib/app-router-types'
 
 const COOKIE_NAME = 'next-instant-navigation-testing'
 
@@ -167,4 +167,22 @@ export function useInstantNavCookieState(): InstantNavCookieData | null {
     if (!rawValue) return null
     return parseCookieValue(rawValue)
   }, [rawValue])
+}
+
+/** Set the instant cookie to [0] (pending) — acquires the lock on the next navigation. */
+export function lock(): void {
+  if (typeof cookieStore !== 'undefined') {
+    cookieStore.set({
+      name: COOKIE_NAME,
+      value: '[0]',
+      path: '/',
+    })
+  }
+}
+
+/** Delete the instant cookie — releases the lock, triggers dynamic data streaming. */
+export function unlock(): void {
+  if (typeof cookieStore !== 'undefined') {
+    cookieStore.delete(COOKIE_NAME)
+  }
 }

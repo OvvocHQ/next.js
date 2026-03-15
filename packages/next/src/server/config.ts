@@ -448,6 +448,10 @@ function assignDefaultsAndValidate(
     )
   }
 
+  if (result.experimental.exposeInstantDevToolsInProductionBuild) {
+    result.experimental.exposeTestingApiInProductionBuild = true
+  }
+
   if (result.experimental.cachedNavigations && !result.cacheComponents) {
     throw new Error(
       `\`experimental.cachedNavigations\` requires \`cacheComponents\` to be enabled. Please update your ${configFileName} accordingly.`
