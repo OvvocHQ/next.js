@@ -164,6 +164,32 @@ describe('prefetch inlining', () => {
      outlined ■      └── "__PAGE__" (+metadata)
      "
     `)
+
+    // Verify client navigation works with the inlined data.
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-small-chain"]')
+          .click()
+      },
+      { includes: 'Small chain page' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-small-chain"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-small-chain').text()).toBe(
+      'Small chain page'
+    )
   })
 
   it('outlined: large segment breaks the inlining chain', async () => {
@@ -180,6 +206,31 @@ describe('prefetch inlining', () => {
      outlined ■      └── "__PAGE__" (+metadata)
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-outlined"]')
+          .click()
+      },
+      { includes: 'Outlined test page' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-outlined"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-outlined').text()).toBe(
+      'Outlined test page'
+    )
   })
 
   it('parallel routes: parent inlines into one slot only', async () => {
@@ -214,6 +265,31 @@ describe('prefetch inlining', () => {
        "
       `)
     }
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-parallel"]')
+          .click()
+      },
+      { includes: 'Main content' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-parallel"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-parallel').text()).toBe(
+      'Main content'
+    )
   })
 
   it('home: root inlines directly into page', async () => {
@@ -247,6 +323,35 @@ describe('prefetch inlining', () => {
      outlined ■              └── "__PAGE__" (+metadata)
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss(
+            'input[data-link-accordion="/test-restart/large-middle/after"]'
+          )
+          .click()
+      },
+      { includes: 'After page' }
+    )
+
+    await act(async () => {
+      await browser
+        .elementByCss('a[href="/test-restart/large-middle/after"]')
+        .click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-restart').text()).toBe(
+      'After page'
+    )
   })
 
   it('deep chain: all small segments inline to the leaf', async () => {
@@ -263,6 +368,29 @@ describe('prefetch inlining', () => {
      outlined ■                  └── "__PAGE__" (+metadata)
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-deep/a/b/c"]')
+          .click()
+      },
+      { includes: 'Deep page' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-deep/a/b/c"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-deep').text()).toBe('Deep page')
   })
 
   it('dynamic route: hints are based on concrete params, not fallback shell', async () => {
@@ -288,6 +416,31 @@ describe('prefetch inlining', () => {
     // pattern, not concrete path)
     const data2 = await fetchRouteTreePrefetch(next, '/test-dynamic/world')
     expect(renderInliningTree(data2.tree)).toBe(helloTree)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-dynamic/hello"]')
+          .click()
+      },
+      { includes: 'Dynamic page: hello' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-dynamic/hello"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-dynamic').text()).toBe(
+      'Dynamic page: hello'
+    )
   })
 
   // TODO: Add a test for stale hints (InliningHintsStale). The stale hints
@@ -351,6 +504,34 @@ describe('prefetch inlining', () => {
       runtime ◻      └── "__PAGE__" (+metadata)
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(
+      async () => {
+        await browser
+          .elementByCss('input[data-link-accordion="/test-runtime-bailout"]')
+          .click()
+      },
+      { includes: 'Static layout content' }
+    )
+
+    await act(async () => {
+      await browser.elementByCss('a[href="/test-runtime-bailout"]').click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#layout-runtime-bailout').text()).toBe(
+      'Static layout content'
+    )
+    expect(await browser.elementByCss('#page-runtime-bailout').text()).toMatch(
+      /Runtime page/
+    )
   })
 
   it('runtime passthrough: static parents inline through runtime layout to static child', async () => {
@@ -371,6 +552,40 @@ describe('prefetch inlining', () => {
      outlined ■          └── "__PAGE__"
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(async () => {
+      await browser
+        .elementByCss(
+          'input[data-link-accordion="/test-runtime-passthrough/inner"]'
+        )
+        .click()
+    }, [
+      { includes: 'Static page below runtime layout' },
+      // Appears twice: once in the static bundle and once in the
+      // runtime prefetch. Static segments below a runtime layout are
+      // not skipped — they participate in inlining normally because
+      // sub-navigations within the runtime layout may need them. The
+      // inlining thresholds ensure the duplication is worth the cost.
+      { includes: 'Static page below runtime layout' },
+    ])
+
+    await act(async () => {
+      await browser
+        .elementByCss('a[href="/test-runtime-passthrough/inner"]')
+        .click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-runtime-passthrough').text()).toBe(
+      'Static page below runtime layout'
+    )
   })
 
   it('instant false passthrough: static parents inline through dynamic layout to static child', async () => {
@@ -390,6 +605,31 @@ describe('prefetch inlining', () => {
      outlined ■          └── "__PAGE__" (+metadata)
      "
     `)
+
+    // Verify the dynamic layout's content is NOT included in any prefetch
+    // response. The layout has instant = false, so its data should be
+    // skipped entirely — fetched only during navigation.
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(async () => {
+      await browser
+        .elementByCss(
+          'input[data-link-accordion="/test-instant-false-passthrough/inner"]'
+        )
+        .click()
+    }, [
+      // The static page below the dynamic layout IS prefetched.
+      { includes: 'page-instant-false-passthrough' },
+      // The dynamic layout content must NOT appear in any prefetch
+      // response — it has instant = false, so it's skipped entirely.
+      { includes: 'Dynamic layout', block: 'reject' },
+    ])
   })
 
   it('runtime parallel: pass-through only flows into one child slot', async () => {
@@ -411,5 +651,37 @@ describe('prefetch inlining', () => {
      outlined ■      └── @sidebar/"__DEFAULT__"
      "
     `)
+
+    let page: Playwright.Page
+    const browser = await next.browser('/', {
+      beforePageLoad(p: Playwright.Page) {
+        page = p
+      },
+    })
+    const act = createRouterAct(page!)
+
+    await act(async () => {
+      await browser
+        .elementByCss(
+          'input[data-link-accordion="/test-runtime-parallel/inner"]'
+        )
+        .click()
+    }, [
+      { includes: 'Runtime parallel main content' },
+      // Appears twice: static bundle + runtime prefetch. Same as
+      // runtime passthrough — static segments below a runtime layout
+      // participate in inlining normally.
+      { includes: 'Runtime parallel main content' },
+    ])
+
+    await act(async () => {
+      await browser
+        .elementByCss('a[href="/test-runtime-parallel/inner"]')
+        .click()
+    }, 'no-requests')
+
+    expect(await browser.elementByCss('#page-runtime-parallel').text()).toBe(
+      'Runtime parallel main content'
+    )
   })
 })
