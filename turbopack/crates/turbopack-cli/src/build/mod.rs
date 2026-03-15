@@ -29,7 +29,7 @@ use turbopack_core::{
     issue::{IssueReporter, IssueSeverity, handle_issues},
     module::Module,
     module_graph::{
-        ModuleGraph, SingleModuleGraph,
+        GraphCollectingMode, ModuleGraph, SingleModuleGraph,
         binding_usage_info::compute_binding_usage_info,
         chunk_group_info::{ChunkGroup, ChunkGroupEntry},
     },
@@ -311,6 +311,7 @@ async fn build_internal(
         ResolvedVc::cell(vec![ChunkGroupEntry::Entry(entries.clone())]),
         false,
         true,
+        GraphCollectingMode::CompleteGraph,
     );
     let mut module_graph = ModuleGraph::from_graphs(vec![single_graph], None);
     let binding_usage = compute_binding_usage_info(module_graph, true);

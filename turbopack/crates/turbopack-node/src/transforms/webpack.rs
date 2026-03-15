@@ -31,7 +31,7 @@ use turbopack_core::{
         Issue, IssueExt, IssueSeverity, IssueSource, IssueStage, OptionIssueSource,
         OptionStyledString, StyledString,
     },
-    module_graph::{ModuleGraph, SingleModuleGraph},
+    module_graph::{GraphCollectingMode, ModuleGraph, SingleModuleGraph},
     reference_type::{InnerAssets, ReferenceType},
     resolve::{
         options::{ConditionValue, ResolveInPackage, ResolveIntoPackage, ResolveOptions},
@@ -271,6 +271,7 @@ impl WebpackLoadersProcessedAsset {
                     entries.graph_entries().to_resolved().await?,
                     false,
                     false,
+                    GraphCollectingMode::CompleteGraph,
                 )],
                 None,
             )
