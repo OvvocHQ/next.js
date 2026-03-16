@@ -46,6 +46,8 @@ opt-level = 3
 
 [profile.release]
 lto = "thin"
+# Maximize LLVM parallelism during compilation; thin LTO recovers cross-CGU optimizations at link time.
+codegen-units = 256
 
 [profile.release.package]
 
