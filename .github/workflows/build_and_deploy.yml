@@ -165,8 +165,6 @@ jobs:
               - 'arm64'
 
             target: 'x86_64-apple-darwin'
-            # --env-mode loose is a breaking change required with turbo 2.x since Strict mode is now the default
-            # TODO: we should add the relevant envs later to to switch to strict mode
             build: |
               npm i -g "@napi-rs/cli@${NAPI_CLI_VERSION}" && corepack enable
               pnpm dlx turbo@${TURBO_VERSION} run build-native-release ${TURBO_ARGS} -- --target x86_64-apple-darwin
@@ -178,8 +176,6 @@ jobs:
               - 'arm64'
 
             target: 'aarch64-apple-darwin'
-            # --env-mode loose is a breaking change required with turbo 2.x since Strict mode is now the default
-            # TODO: we should add the relevant envs later to to switch to strict mode
             build: |
               npm i -g "@napi-rs/cli@${NAPI_CLI_VERSION}" && corepack enable
               pnpm dlx turbo@${TURBO_VERSION} run build-native-release ${TURBO_ARGS} -- --target aarch64-apple-darwin
@@ -190,8 +186,6 @@ jobs:
               - 'windows'
               - 'x64'
 
-            # --env-mode loose is a breaking change required with turbo 2.x since Strict mode is now the default
-            # TODO: we should add the relevant envs later to to switch to strict mode
             build: |
               corepack enable
               npm i -g "@napi-rs/cli@${NAPI_CLI_VERSION}"
@@ -204,8 +198,6 @@ jobs:
               - 'x64'
 
             target: 'aarch64-pc-windows-msvc'
-            # --env-mode loose is a breaking change required with turbo 2.x since Strict mode is now the default
-            # TODO: we should add the relevant envs later to to switch to strict mode
             build: |
               corepack enable
               npm i -g "@napi-rs/cli@${NAPI_CLI_VERSION}"
@@ -359,7 +351,7 @@ jobs:
       - name: Set RUSTFLAGS for docker builds
         if: ${{ matrix.settings.docker }}
         run: |
-          RUSTFLAGS=$(grep '${{ matrix.settings.target }}:' .github/rustflags.yml | sed "s/.*: '\\(.*\\)'/\\1/")
+          RUSTFLAGS=$(grep '^${{ matrix.settings.target }}:' .github/rustflags.yml | sed "s/.*: '\\(.*\\)'/\\1/")
           echo "RUSTFLAGS=$RUSTFLAGS" >> $GITHUB_ENV
 
       - name: Clear native build
@@ -480,8 +472,6 @@ jobs:
         run: node scripts/normalize-version-bump.js
 
       - name: Build
-        # --env-mode loose is a breaking change required with turbo 2.x since Strict mode is now the default
-        # TODO: we should add the relevant envs later to to switch to strict mode
         run: pnpm dlx turbo@${TURBO_VERSION} run build-wasm ${TURBO_ARGS} -- --target ${{ matrix.target }}
 
       - name: Add target to folder name
