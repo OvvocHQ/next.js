@@ -1,10 +1,8 @@
 import type { Params } from '../request/params'
 import type { SearchParams } from '../request/search-params'
 import { workUnitAsyncStorage } from './work-unit-async-storage.external'
-import type {
-  VaryParamsThenable,
-  VaryParams,
-} from '../../shared/lib/segment-cache/vary-params-decoding'
+import type { CacheInfoThenable } from '../../shared/lib/segment-cache/cache-info-decoding'
+import type { VaryParams } from '../../shared/lib/app-router-types'
 
 /**
  * Accumulates vary params for a single segment (or for metadata/rootParams).
@@ -174,11 +172,11 @@ export function getMetadataVaryParamsAccumulator(): VaryParamsAccumulator | null
 
 export function getVaryParamsThenable(
   accumulator: VaryParamsAccumulator
-): VaryParamsThenable | null {
-  return accumulator as unknown as VaryParamsThenable | null
+): CacheInfoThenable<VaryParams> | null {
+  return accumulator as unknown as CacheInfoThenable<VaryParams> | null
 }
 
-export function getMetadataVaryParamsThenable(): VaryParamsThenable | null {
+export function getMetadataVaryParamsThenable(): CacheInfoThenable<VaryParams> | null {
   const accumulator = getMetadataVaryParamsAccumulator()
   if (accumulator !== null) {
     return getVaryParamsThenable(accumulator)

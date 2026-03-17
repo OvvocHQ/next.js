@@ -1137,5 +1137,11 @@
   "1136": "Page \"%s\" cannot use both \\`export const unstable_dynamicStaleTime\\` and \\`export const unstable_instant\\`.",
   "1137": "\"%s\" cannot use \\`export const unstable_dynamicStaleTime\\`. This config is only supported in page files, not layouts.",
   "1138": "`unstable_retry()` can only be used in the App Router. Use `reset()` in the Pages Router.",
-  "1139": "`unstable_catchError` can only be used in Client Components."
+  "1139": "`unstable_catchError` can only be used in Client Components.",
+  "1140": "`unstable_navigation` must not be used within a Client Component. Next.js should be preventing `unstable_navigation` from being included in Client Components statically, but did not in this case.",
+  "1141": "Unexpected work unit store type.",
+  "1142": "`unstable_navigation()` cannot be called inside `generateStaticParams()`.",
+  "1143": "`unstable_navigation()` is only available with the `cacheComponents` config.",
+  "1144": "`unstable_navigation()` was called outside a request scope. Read more: https://nextjs.org/docs/messages/next-dynamic-api-wrong-context",
+  "1145": "`unstable_navigation()` cannot be called inside `unstable_cache()`."
 }

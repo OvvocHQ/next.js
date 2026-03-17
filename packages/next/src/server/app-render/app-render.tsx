@@ -202,6 +202,13 @@ import {
   finishAccumulatingVaryParams,
   getMetadataVaryParamsThenable,
 } from './vary-params'
+import {
+  createCacheInfoThenable,
+  resolveCacheInfoThenable,
+  type ServerCacheInfoThenable,
+} from './cache-info'
+import type { CacheInfoThenable } from '../../shared/lib/segment-cache/cache-info-decoding'
+import { CacheStage } from '../../shared/lib/segment-cache/cache-stage'
 import { getTracedMetadata } from '../lib/trace/utils'
 import { InvariantError } from '../../shared/lib/invariant-error'
 import {
@@ -569,6 +576,7 @@ async function generateDynamicRSCPayload(
     staleTimeIterable?: AsyncIterable<number>
     staticStageByteLengthPromise?: Promise<number>
     runtimePrefetchStream?: ReadableStream<Uint8Array>
+    cacheStageThenable?: ServerCacheInfoThenable<number>
   }
 ): Promise<RSCPayload> {
   // Flight data that is going to be passed to the browser.
@@ -725,6 +733,11 @@ async function generateDynamicRSCPayload(
     if (dynamicStaleTime !== null) {
       baseResponse.d = dynamicStaleTime
     }
+  }
+
+  if (options?.cacheStageThenable !== undefined) {
+    baseResponse.g =
+      options.cacheStageThenable as unknown as CacheInfoThenable<number>
   }
 
   return baseResponse
@@ -996,9 +1009,17 @@ async function spawnRuntimePrefetchWithFilledCaches(
     const rootParams = getRootParams(loaderTree, getDynamicParamFromSegment)
     const staleTimeIterable = new StaleTimeIterable()
 
+    // Create a thenable that resolves to the cache stage after rendering.
+    // Flight serializes this lazily into the stream, following the same
+    // pattern as vary params.
+    const cacheStageThenable = createCacheInfoThenable(CacheStage.Max)
+
     const { result } = await finalRuntimeServerPrerender(
       ctx,
-      generateDynamicRSCPayload.bind(null, ctx, { staleTimeIterable }),
+      generateDynamicRSCPayload.bind(null, ctx, {
+        staleTimeIterable,
+        cacheStageThenable,
+      }),
       prerenderResumeDataCache,
       null, // renderResumeDataCache
       rootParams,
@@ -1006,7 +1027,8 @@ async function spawnRuntimePrefetchWithFilledCaches(
       requestStore.cookies,
       requestStore.draftMode,
       onError,
-      staleTimeIterable
+      staleTimeIterable,
+      cacheStageThenable
     )
 
     await result.prelude.pipeTo(writable)
@@ -1397,6 +1419,7 @@ async function prospectiveRuntimeServerPrerender(
     hmrRefreshHash: undefined,
     // We don't track vary params during initial prerender, only the final one
     varyParamsAccumulator: null,
+    cacheStageThenable: null,
     // No stage sequencing needed for prospective renders.
     stagedRendering: null,
     // These are not present in regular prerenders, but allowed in a runtime prerender.
@@ -1518,7 +1541,8 @@ async function finalRuntimeServerPrerender(
   cookies: PrerenderStoreModernRuntime['cookies'],
   draftMode: PrerenderStoreModernRuntime['draftMode'],
   onError: (err: unknown) => string | undefined,
-  staleTimeIterable: StaleTimeIterable
+  staleTimeIterable: StaleTimeIterable,
+  cacheStageThenable?: ServerCacheInfoThenable<number>
 ) {
   const { implicitTags, renderOpts } = ctx
   const { ComponentMod, experimental, isDebugDynamicAccesses } = renderOpts
@@ -1558,6 +1582,7 @@ async function finalRuntimeServerPrerender(
     hmrRefreshHash: undefined,
     // TODO: Enable vary params tracking for runtime prefetches.
     varyParamsAccumulator: null,
+    cacheStageThenable: cacheStageThenable ?? null,
     // Used to separate the stages in the 5-task pipeline.
     stagedRendering: finalStageController,
     // These are not present in regular prerenders, but allowed in a runtime prerender.
@@ -1612,10 +1637,28 @@ async function finalRuntimeServerPrerender(
       finalStageController.advanceStage(RenderStage.Runtime)
     },
     () => {
-      finishStaleTimeTracking(staleTimeIterable).then(() => {
+      // Resolve all cache info thenables, then abort the prerender. These
+      // are resolved in parallel because they are conceptually the same
+      // operation — finalizing info that Flight needs to serialize into the
+      // stream before we close it. See cache-info.ts for more context.
+      const cacheInfoPromises: Array<Promise<void> | void> = [
+        finishStaleTimeTracking(staleTimeIterable),
+      ]
+
+      // Resolve the cache stage thenable: 0 = default (content was
+      // intentionally omitted due to navigation boundaries), 1 = max
+      // (nothing was intentionally omitted).
+      if (finalServerPrerenderStore.cacheStageThenable) {
+        resolveCacheInfoThenable(
+          finalServerPrerenderStore.cacheStageThenable,
+          finalServerPrerenderStore.cacheStageThenable.current
+        )
+      }
+
+      Promise.all(cacheInfoPromises).then(() => {
         // Abort. This runs as a microtask after Flight has flushed the
-        // staleTime closing chunk, but before the next macrotask resolves the
-        // overall result.
+        // metadata closing chunks, but before the next macrotask resolves
+        // the overall result.
         if (finalServerController.signal.aborted) {
           // If the server controller is already aborted we must have called
           // something that required aborting the prerender synchronously such
@@ -4342,6 +4385,7 @@ async function warmupClientModulesForStagedValidation(
       hmrRefreshHash: undefined,
       // Client prerenders don't track server param access
       varyParamsAccumulator: null,
+      cacheStageThenable: null,
     }
     initialClientPrerenderStore = store
   } else {
@@ -4366,6 +4410,7 @@ async function warmupClientModulesForStagedValidation(
       hmrRefreshHash: undefined,
       // Client prerenders don't track server param access
       varyParamsAccumulator: null,
+      cacheStageThenable: null,
       // We're not rendering any validation boundaries yet.
       boundaryState: null,
       validationSamples,
@@ -4517,6 +4562,7 @@ async function validateStagedShell(
     hmrRefreshHash,
     // Client prerenders don't track server param access
     varyParamsAccumulator: null,
+    cacheStageThenable: null,
   }
 
   const dynamicValidation = createDynamicValidationState()
@@ -4783,6 +4829,7 @@ async function validateInstantConfigs(
       renderResumeDataCache: null,
       hmrRefreshHash,
       varyParamsAccumulator: null,
+      cacheStageThenable: null,
       boundaryState,
       fallbackRouteParams,
       validationSamples,
@@ -5855,6 +5902,7 @@ async function prerenderToStream(
         hmrRefreshHash: undefined,
         // We don't track vary params during initial prerender, only the final one
         varyParamsAccumulator: null,
+        cacheStageThenable: null,
       }
 
       // We're not going to use the result of this render because the only time it could be used
@@ -5890,6 +5938,7 @@ async function prerenderToStream(
         hmrRefreshHash: undefined,
         // We don't track vary params during initial prerender, only the final one
         varyParamsAccumulator: null,
+        cacheStageThenable: null,
       })
 
       const initialPrerenderOptions = {
@@ -6013,6 +6062,7 @@ async function prerenderToStream(
           hmrRefreshHash: undefined,
           // Client prerenders don't track server param access
           varyParamsAccumulator: null,
+          cacheStageThenable: null,
         }
 
         const pendingInitialClientResult = workUnitAsyncStorage.run(
@@ -6137,6 +6187,7 @@ async function prerenderToStream(
         renderResumeDataCache,
         hmrRefreshHash: undefined,
         varyParamsAccumulator,
+        cacheStageThenable: null,
       }
 
       const finalAttemptRSCPayload = await workUnitAsyncStorage.run(
@@ -6178,6 +6229,7 @@ async function prerenderToStream(
         renderResumeDataCache,
         hmrRefreshHash: undefined,
         varyParamsAccumulator,
+        cacheStageThenable: null,
       })
 
       if (staleTimeIterable !== undefined) {
@@ -6291,6 +6343,7 @@ async function prerenderToStream(
         hmrRefreshHash: undefined,
         // Client prerenders don't track server param access
         varyParamsAccumulator: null,
+        cacheStageThenable: null,
       }
 
       let dynamicValidation = createDynamicValidationState()

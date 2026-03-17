@@ -418,6 +418,7 @@ export class AppRouteRouteModule extends RouteModule<
               renderResumeDataCache: null,
               hmrRefreshHash: undefined,
               varyParamsAccumulator: null,
+              cacheStageThenable: null,
             })
 
           let prospectiveResult
@@ -515,6 +516,7 @@ export class AppRouteRouteModule extends RouteModule<
             renderResumeDataCache: null,
             hmrRefreshHash: undefined,
             varyParamsAccumulator: null,
+            cacheStageThenable: null,
           })
 
           let responseHandled = false
