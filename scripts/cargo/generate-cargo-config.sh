@@ -62,7 +62,9 @@ GNU_LINUX_FLAGS=("${COMMON[@]}" "${PERF[@]}" "${LLD_SELF_CONTAINED[@]}")
 
 X86_64_MUSL_FLAGS=("${COMMON[@]}" "${PERF[@]}" '-Ctarget-feature=-crt-static' "${LLD_SELF_CONTAINED[@]}")
 
-AARCH64_MUSL_FLAGS=("${COMMON[@]}" "${PERF[@]}" '-Ctarget-feature=-crt-static' '-Clink-arg=-lgcc' "${LLD_SELF_CONTAINED[@]}")
+# aarch64-musl is cross-compiled on x86_64, so self-contained LLD doesn't work
+# (Rust's bundled gcc-ld resolves to the host sysroot). Use the system cross-linker instead.
+AARCH64_MUSL_FLAGS=("${COMMON[@]}" "${PERF[@]}" '-Ctarget-feature=-crt-static' '-Clink-arg=-lgcc')
 
 X86_64_WIN_FLAGS=("${COMMON[@]}" "${PERF[@]}" '-C' 'target-feature=+crt-static')
 
@@ -107,6 +109,7 @@ toml_array "${GNU_LINUX_FLAGS[@]}"
 printf '\n'
 
 printf '[target.aarch64-unknown-linux-musl]\n'
+printf 'linker = "aarch64-linux-musl-gcc"\n'
 printf 'rustflags = '
 toml_array "${AARCH64_MUSL_FLAGS[@]}"
 printf '\n'

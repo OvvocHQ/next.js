@@ -49,6 +49,8 @@ lto = "thin"
 # Maximize LLVM parallelism during compilation; thin LTO recovers cross-CGU optimizations at link time.
 codegen-units = 256
 
+# Size-optimized crates: determined via `cargo bloat --release --crates -p turbopack-cli`.
+# Only add opt-level="s" overrides here for crates that show significant size in bloat output.
 [profile.release.package.lightningcss]
 opt-level = "s"
 
