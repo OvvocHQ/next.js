@@ -3,21 +3,19 @@ use std::{
     fmt::Display,
     fs::File,
     io::{BufReader, Seek},
-    ops::Deref,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 use anyhow::{Context, Result, bail};
-use bincode::{Decode, Encode};
 use bitfield::bitfield;
 use byteorder::{BE, ReadBytesExt};
 use memmap2::{Mmap, MmapOptions};
 use smallvec::SmallVec;
-use turbo_bincode::turbo_bincode_decode;
 
 use crate::{
     QueryKey,
+    arc_filter_ref::ArcFilterRef,
     lookup_entry::LookupValue,
     mmap_helper::advise_mmap_for_persistence,
     static_sorted_file::{BlockCache, SstLookupResult, StaticSortedFile, StaticSortedFileMetaData},
@@ -52,14 +50,6 @@ impl Display for MetaEntryFlags {
     }
 }
 
-/// A wrapper around [`qfilter::Filter`] that implements [`Encode`] and [`Decode`].
-#[derive(Encode, Decode)]
-pub struct AmqfBincodeWrapper(
-    // this annotation can be replaced with `#[bincode(serde)]` once
-    // <https://github.com/arthurprs/qfilter/issues/13> is resolved
-    #[bincode(with = "turbo_bincode::serde_self_describing")] pub qfilter::Filter,
-);
-
 pub struct MetaEntry {
     /// The metadata for the static sorted file.
     sst_data: StaticSortedFileMetaData,
@@ -79,9 +69,9 @@ pub struct MetaEntry {
     /// The offset of the end of the AMQF data in the the meta file relative to the end of the
     /// header.
     end_of_amqf_data_offset: u32,
-    /// The AMQF filter of this file. This is only used if the range is very large. Smaller ranges
-    /// use the AMQF cache instead.
-    amqf: OnceLock<qfilter::Filter>,
+    /// The AMQF filter for this file, lazily deserialized as a zero-copy [`ArcFilterRef`] that
+    /// borrows directly from the memory-mapped meta file.
+    amqf: OnceLock<ArcFilterRef>,
     /// The static sorted file that is lazily loaded
     sst: OnceLock<StaticSortedFile>,
 }
@@ -109,20 +99,19 @@ impl MetaEntry {
             .expect("AMQF data out of bounds")
     }
 
-    pub fn deserialize_amqf(&self, meta: &MetaFile) -> Result<qfilter::Filter> {
-        let amqf = self.raw_amqf(meta.amqf_data());
-        Ok(turbo_bincode_decode::<AmqfBincodeWrapper>(amqf)
-            .with_context(|| {
-                format!(
-                    "Failed to deserialize AMQF from {:08}.meta for {:08}.sst",
-                    meta.sequence_number,
-                    self.sequence_number()
-                )
-            })?
-            .0)
+    pub fn deserialize_amqf(&self, meta: &MetaFile) -> Result<ArcFilterRef> {
+        let amqf_data = self.raw_amqf(meta.amqf_data());
+        // Safety: amqf_data is a subslice of meta.mmap, and we clone the Arc to keep it alive.
+        unsafe { ArcFilterRef::from_mmap_slice(&meta.mmap, amqf_data) }.with_context(|| {
+            format!(
+                "Failed to deserialize AMQF from {:08}.meta for {:08}.sst",
+                meta.sequence_number,
+                self.sequence_number()
+            )
+        })
     }
 
-    pub fn amqf(&self, meta: &MetaFile) -> Result<impl Deref<Target = qfilter::Filter>> {
+    pub fn amqf(&self, meta: &MetaFile) -> Result<&ArcFilterRef> {
         self.amqf.get_or_try_init(|| {
             let amqf = self.deserialize_amqf(meta)?;
             anyhow::Ok(amqf)
@@ -229,8 +218,8 @@ pub struct MetaFile {
     /// The offset of the end of the "used keys" AMQF data in the the meta file relative to the end
     /// of the header.
     end_of_used_keys_amqf_data_offset: u32,
-    /// The memory mapped file.
-    mmap: Mmap,
+    /// The memory mapped file, wrapped in Arc so [`ArcFilterRef`] can share ownership.
+    mmap: Arc<Mmap>,
 }
 
 impl MetaFile {
@@ -299,7 +288,7 @@ impl MetaFile {
             obsolete_sst_files,
             start_of_used_keys_amqf_data_offset,
             end_of_used_keys_amqf_data_offset,
-            mmap,
+            mmap: Arc::new(mmap),
         };
         Ok(file)
     }

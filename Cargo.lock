@@ -9417,7 +9417,6 @@ name = "turbo-persistence"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bincode 2.0.1",
  "bitfield",
  "byteorder",
  "codspeed-criterion-compat",
@@ -9439,7 +9438,6 @@ dependencies = [
  "tempfile",
  "thread_local",
  "tracing",
- "turbo-bincode",
  "turbo-tasks-malloc",
  "xxhash-rust",
 ]

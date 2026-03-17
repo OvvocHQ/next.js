@@ -3,6 +3,7 @@
 #![feature(iter_collect_into)]
 
 mod arc_bytes;
+mod arc_filter_ref;
 mod collector;
 mod collector_entry;
 mod compaction;
