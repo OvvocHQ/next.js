@@ -895,6 +895,7 @@ export function createDetachedSegmentCacheEntry(
   // is set when the entry is fulfilled with data from the server response.
   const staleAt = now + 30 * 1000
   const emptyEntry: EmptySegmentCacheEntry = {
+    // @ts-ignore debug
     status: EntryStatus.Empty,
     // Default to assuming the fetch strategy will be PPR. This will be updated
     // when a fetch is actually initiated.
@@ -1958,21 +1959,14 @@ export async function fetchSegmentOnCacheMiss(
     // across different param values for params that the segment doesn't
     // actually depend on.
     const varyParams = serverData.varyParams
-    if (process.env.__NEXT_VARY_PARAMS && varyParams !== null) {
-      // Re-key the entry by storing it at a more generic vary path where
-      // unused params are replaced with Fallback.
-      const fulfilledVaryPath = getFulfilledSegmentVaryPath(
-        tree.varyPath,
-        varyParams
-      )
-      const isRevalidation = false
-      setInCacheMap(
-        segmentCacheMap,
-        fulfilledVaryPath,
-        fulfilledEntry,
-        isRevalidation
-      )
-    }
+    const fulfilledVaryPath =
+      process.env.__NEXT_VARY_PARAMS && varyParams !== null
+        ? getFulfilledSegmentVaryPath(tree.varyPath, varyParams)
+        : getSegmentVaryPathForRequest(segmentCacheEntry.fetchStrategy, tree)
+    // Re-key and upsert the entry at the fulfilled vary path. This ensures
+    // the entry is stored at the most generic path possible based on which
+    // params the segment actually depends on.
+    upsertSegmentEntry(Date.now(), fulfilledVaryPath, fulfilledEntry)
 
     return {
       value: fulfilledEntry,
