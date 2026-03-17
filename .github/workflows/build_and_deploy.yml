@@ -20,7 +20,7 @@ concurrency:
 env:
   NAPI_CLI_VERSION: 2.18.4
   TURBO_VERSION: 2.8.11
-  TURBO_ARGS: '-v --env-mode loose --remote-cache-timeout 90 --summarize'
+  TURBO_ARGS: '-vv --env-mode loose --remote-cache-timeout 90 --summarize'
   NODE_LTS_VERSION: 20
   TURBO_TEAM: 'vercel'
   TURBO_CACHE: 'remote:rw'
@@ -227,8 +227,6 @@ jobs:
             #   environment.
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:stable-2023-09-17-x64
             build: |
-              set
-              unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS  # let .cargo/config.toml control flags
               apt update
               apt install -y pkg-config xz-utils dav1d libdav1d-dev
               rustup show
@@ -249,8 +247,6 @@ jobs:
             target: 'x86_64-unknown-linux-musl'
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:stable-2023-09-17-alpine
             build: |
-              set
-              unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS  # let .cargo/config.toml control flags
               apk update
               apk del llvm llvm16
               apk add --no-cache libc6-compat pkgconfig dav1d libdav1d dav1d-dev clang-static clang-dev llvm-dev
@@ -270,8 +266,6 @@ jobs:
             target: 'aarch64-unknown-linux-gnu'
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:stable-2023-09-17-aarch64
             build: |
-              set
-              unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS  # let .cargo/config.toml control flags
               apt update
               apt install -y pkg-config xz-utils dav1d libdav1d-dev
               export JEMALLOC_SYS_WITH_LG_PAGE=16
@@ -294,8 +288,6 @@ jobs:
             target: 'aarch64-unknown-linux-musl'
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:stable-2023-09-17-alpine
             build: |
-              set
-              unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS  # let .cargo/config.toml control flags
               apk update
               apk del llvm llvm16
               apk add --no-cache libc6-compat pkgconfig dav1d libdav1d dav1d-dev clang-static clang-dev llvm-dev
@@ -364,6 +356,12 @@ jobs:
           cache-provider: 'turbo'
           shared-key: build-${{ matrix.settings.target }}-${{ hashFiles('.cargo/config.toml') }}
 
+      - name: Set RUSTFLAGS for docker builds
+        if: ${{ matrix.settings.docker }}
+        run: |
+          RUSTFLAGS=$(grep '${{ matrix.settings.target }}:' .github/rustflags.yml | sed "s/.*: '\\(.*\\)'/\\1/")
+          echo "RUSTFLAGS=$RUSTFLAGS" >> $GITHUB_ENV
+
       - name: Clear native build
         run: rm -rf packages/next-swc/native
 
@@ -386,7 +384,7 @@ jobs:
           DOCKER_CMD: ${{ matrix.settings.build }}
         run: |
           docker run -v "/var/run/docker.sock":"/var/run/docker.sock" \
-            -e CI -e RUST_BACKTRACE -e NAPI_CLI_VERSION -e CARGO_TERM_COLOR \
+            -e CI -e RUST_BACKTRACE -e RUSTFLAGS -e NAPI_CLI_VERSION -e CARGO_TERM_COLOR \
             -e CARGO_INCREMENTAL=0 -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL -e TURBO_API \
             -e TURBO_TEAM -e TURBO_TOKEN -e TURBO_VERSION -e TURBO_CACHE="remote:rw" \
             -v ${{ env.HOME }}/.cargo/git:/root/.cargo/git \
